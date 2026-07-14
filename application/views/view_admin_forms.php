@@ -1,0 +1,62 @@
+<?php
+$CI =& get_instance();
+$can_view_settlement_form = $CI->check_permission('forms.settlement.view');
+$can_view_replacement_form = $CI->check_permission('forms.replacement.view');
+
+$form_key = $this->input->get('form', TRUE);
+$form_src = ($form_key === 'settlement') ? 'free_form/index2.html' : 'free_form/index.html';
+
+if ($form_key === 'settlement' && !$can_view_settlement_form) {
+    $CI->check_permission('forms.settlement.view');
+} elseif ($form_key === 'replacement' && !$can_view_replacement_form) {
+    $CI->check_permission('forms.replacement.view');
+}
+
+$forms_data_url = isset($forms_data_url) ? $forms_data_url : base_url().MOD_VALUE.'admin/forms-data';
+$form_src .= '?' . http_build_query(['data' => $forms_data_url]);
+$form_title = ($form_key === 'settlement') ? 'نموذج تسوية الغرامة' : 'استبدال الجهاز';
+?>
+<title><?= $form_title; ?></title>
+<?php $this->load->view('view_header'); ?>
+<?php $this->load->view('view_admin_sidebar'); ?>
+
+<style>
+  .admin-forms-frame-shell {
+    height: calc(100vh - 104px);
+    min-height: 760px;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  }
+
+  .admin-forms-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
+  }
+
+  @media (max-width: 768px) {
+    .admin-forms-frame-shell {
+      height: calc(100vh - 88px);
+      min-height: 680px;
+      border-radius: 12px;
+    }
+  }
+</style>
+
+<div class="app-content admin-ui-forms">
+  <div class="admin-forms-frame-shell">
+    <iframe
+      class="admin-forms-frame"
+      src="<?php echo base_url($form_src); ?>"
+      title="<?= $form_title; ?>"
+    ></iframe>
+  </div>
+</div>
+</div>
+
+<script src="<?php echo base_url(); ?>public/js/script.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
+<?php $this->load->view('view_footer'); ?>
