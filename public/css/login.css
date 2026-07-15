@@ -79,7 +79,7 @@
   position: relative;
   width: min(100%, 560px);
   min-height: 640px;
-  padding: 58px 72px 58px;
+  padding: 25px 72px 58px;
   overflow: hidden;
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.86);
@@ -149,7 +149,7 @@
 
 .login-brand img {
   display: block;
-  width: 130%;
+  width: 105%;
   height: 100%;
   object-fit: contain;
 }
@@ -157,7 +157,7 @@
 .login-widget h1 {
   position: relative;
   z-index: 1;
-  margin: 8px 0 6px;
+  margin: 80px 0 6px;
   color: var(--sg-purple);
   font-size: 30px;
   line-height: 1.25;
