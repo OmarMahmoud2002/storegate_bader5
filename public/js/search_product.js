@@ -67,6 +67,8 @@ if (productDetailsClose) {
 function set_data(data) {
     var image_path = 'default_product_image.png';
     var product_images = Array.isArray(data['images']) && data['images'].length ? data['images'] : [image_path];
+    const itemShelfCell = document.getElementById('item_shelf');
+    const subinventoryCell = document.getElementById('subinventory_code');
     
     $('.product-gallery-extra').remove();
     $('#product_name').text(data['name']);
@@ -74,12 +76,23 @@ function set_data(data) {
     if (data['shelf'].includes('movedToEmployee')) {
         $('#item_shelf').text('تم تسليمه');
     } else {
-        $('#item_shelf').text(data['shelf']);
+        $('#item_shelf').text(data['shelf'] === 'غير موجود في رف' ? 'not available' : data['shelf']);
+    }
+
+    if (itemShelfCell) {
+      itemShelfCell.classList.toggle('product-cell-unavailable', $('#item_shelf').text() === 'not available');
     }
 
     $('#item_code').text(data['code']);
     $('#serial_number').text(data['serial_number'] || 'لا يوجد');
-    $('#subinventory_code').text(data['subinventory_code']);
+    $('#subinventory_code').text(data['subinventory_code'] || '');
+    if (subinventoryCell) {
+      const subinventoryCode = String(data['subinventory_code'] || '').trim();
+      subinventoryCell.classList.remove('product-cell-subinventory-strong', 'product-cell-subinventory-soft');
+      if (subinventoryCode) {
+        subinventoryCell.classList.add(subinventoryCode === '23012' ? 'product-cell-subinventory-strong' : 'product-cell-subinventory-soft');
+      }
+    }
     $('#total_quantity').text(data['total_quantity']);
     $('#product_image').attr('href', appBaseUrl + 'public/img/products/' + product_images[0]);
     $('#product_image').attr('data-caption', data['name']);

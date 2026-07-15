@@ -442,7 +442,7 @@ class Products extends MY_Controller {
         $remaining_quantity = $this->Store->get_remaining_quantity_by_item_code($item['item_code']);
 
         $shelf_id = $this->Store->get_item_shelf($item['item_code'], $item['serial_number'], $item['barcode']);
-        $shelf_name = 'غير موجود في رف';
+        $shelf_name = 'not available';
 
         if ($shelf_id != null) {
             $shelf = $this->Shelves->get_one_shelf_by_id($shelf_id);

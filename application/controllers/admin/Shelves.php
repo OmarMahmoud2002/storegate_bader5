@@ -1,10 +1,11 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class Shelves extends MY_Controller {
+class Shelves extends MY_Controller
+{
 
-	function __construct()
-	{
+    function __construct()
+    {
         parent::__construct();
         $this->load->model('Model_admin');
         $this->load->model('Model_store_items', 'Store');
@@ -18,13 +19,14 @@ class Shelves extends MY_Controller {
         ini_set('memory_limit', '512M');
     }
 
-    public function index() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    public function index()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
         $this->check_permission('shelves.view');
-        
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $action = $this->input->post('action');
 
@@ -37,7 +39,7 @@ class Shelves extends MY_Controller {
                 if ($result['status'] == false) {
                     $this->session->set_flashdata('error', $result['description']);
                 }
-                
+
             } else if ($action == 'rearrange_shelf') {
                 $this->check_permission('shelves.rearrange');
                 $serials = $this->input->post('serials');
@@ -61,7 +63,7 @@ class Shelves extends MY_Controller {
                     }
 
                     $item_without_s = $this->Store->get_store_item(['serial_number' => $serial_number]);
-                    $item_with_s = $this->Store->get_store_item(['serial_number' => preg_replace('/^S/', '', $serial_number, 1)]);
+                    $item_with_s = $this->Store->get_store_item(['serial_number' => preg_replace('/^[Ss]/', '', $serial_number, 1)]);
 
                     $item = null;
 
@@ -77,9 +79,6 @@ class Shelves extends MY_Controller {
                         }
                         $this->Store->move_item_to_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode'], $shelf_id);
 
-                        # update poster number
-                        $poster_number = empty($posters[$i]) || $posters[$i] == '' ? null : $posters[$i];
-                        $this->Store->update_store_item(['poster_number' => $poster_number], ['id' => $item['id']]);
                     } else {
                         $errors .= 'السيريال غير موجود' . '<br>';
                         continue;
@@ -95,12 +94,13 @@ class Shelves extends MY_Controller {
             }
         }
 
-		$this->data['shelves'] = $this->Shelves->get_shelves();
-		$this->load->view('view_admin_shelves', $this->data);
+        $this->data['shelves'] = $this->Shelves->get_shelves();
+        $this->load->view('view_admin_shelves', $this->data);
     }
 
-    public function check_serial() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    public function check_serial()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             $this->output
                 ->set_status_header(403)
                 ->set_content_type('application/json')
@@ -129,25 +129,38 @@ class Shelves extends MY_Controller {
             return;
         }
 
-        $item = $this->Store->get_store_item(array('serial_number' => $serial_number));
+        // نفس لوجيك صفحة العمليات:
+        // 1) جرّب القيمة الأصلية كما هي
+        // 2) إذا فشل، جرّب بعد إزالة البادئة S أو s (كبير أو صغير)
+        // 3) اختر أول نتيجة تطابق
+        $item_without_s = $this->Store->get_store_item(array('serial_number' => $serial_number));
+        $item_with_s = $this->Store->get_store_item(array('serial_number' => preg_replace('/^[Ss]/', '', $serial_number, 1)));
+
+        $item = null;
+        if ($item_without_s != null) {
+            $item = $item_without_s;
+        } else if ($item_with_s != null) {
+            $item = $item_with_s;
+        }
 
         $this->output
             ->set_content_type('application/json')
             ->set_output(json_encode(array(
                 'status' => 'success',
                 'exists' => !empty($item),
-                'serial' => $serial_number,
+                'serial' => !empty($item) ? $item['serial_number'] : $serial_number,
                 'subinventory_code' => !empty($item) ? $item['subinventory_code'] : null
             )));
     }
 
-    public function delete_shelf() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    public function delete_shelf()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
         $this->check_permission('shelves.delete');
-        
+
         $id = $this->input->get('id');
 
         $this->Shelves->delete_shelf(array('id' => $id));
@@ -165,16 +178,17 @@ class Shelves extends MY_Controller {
         redirect(base_url('admin/shelves'));
     }
 
-    public function show() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    public function show()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
-        
+
 
         $this->check_permission('shelves.items.view');
 
         $id = $this->input->get('id');
-        
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $action = $this->input->post('action');
 

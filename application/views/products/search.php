@@ -48,6 +48,24 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
       filter: brightness(1.03);
     }
 
+    .prod_form .prod_infos .cnts .prod_info td.product-cell-unavailable {
+      background: #ffd9d6 !important;
+      color: #8a1f17 !important;
+      font-weight: 800;
+    }
+
+    .prod_form .prod_infos .cnts .prod_info td.product-cell-subinventory-strong {
+      background: #d9f7e5 !important;
+      color: #157347 !important;
+      font-weight: 800;
+    }
+
+    .prod_form .prod_infos .cnts .prod_info td.product-cell-subinventory-soft {
+      background: #eef9f1 !important;
+      color: #157347 !important;
+      font-weight: 800;
+    }
+
 </style>
 
 <div class = 'app-content admin-ui-page admin-ui-product-search'>

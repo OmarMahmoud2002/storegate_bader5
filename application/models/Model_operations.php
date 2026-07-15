@@ -17,9 +17,15 @@ class Model_operations extends CI_Model {
     }
 
     function add_operation($data, $user_id) {
-        $data['made_by'] = $user_id;
-        $data['date_created'] = date('Y-m-d H:i:s');
-        $this->db->insert($this->table, $data);
+        $operationData = array(
+            'serial' => isset($data['serial']) ? $data['serial'] : '',
+            'operation' => isset($data['operation']) ? $data['operation'] : '',
+            'sales_order' => isset($data['sales_order']) ? $data['sales_order'] : '0',
+            'made_by' => $user_id,
+            'date_created' => date('Y-m-d H:i:s')
+        );
+
+        $this->db->insert($this->table, $operationData);
     }
 
 }

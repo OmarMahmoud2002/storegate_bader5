@@ -226,6 +226,20 @@ flex: 1;
     cursor: pointer;
 }
 
+.date-picker.is-locked-date,
+.date-picker.is-locked-date:hover,
+.date-picker.is-locked-date:focus,
+.flatpickr-input.is-locked-date,
+.flatpickr-input.is-locked-date:hover,
+.flatpickr-input.is-locked-date:focus {
+    cursor: not-allowed !important;
+    caret-color: transparent;
+}
+
+.date-picker.is-locked-date:focus {
+    outline: none;
+}
+
 .date-picker::placeholder {
     color: #999;
     font-size: 11px;

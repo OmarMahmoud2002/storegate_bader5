@@ -273,6 +273,7 @@
 setIfAvailable(document.querySelector('input[name="storeName"]'), settings.store_name);
 setIfAvailable(
     document.querySelector('[data-form-return-reason]') ||
+    document.querySelector('input[name="return_reason"]') ||
     document.querySelector('input[name="returnReason"]'),
     settings.return_reason
 );

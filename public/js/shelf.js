@@ -38,7 +38,7 @@ const shelfBarcodeScanDebug = true;
 const shelfSerialCheckCache = Object.create(null);
 
 $(".app-content-headerButton:not(.orderShelf)").click(() => {
-  $(".popup-add-shelf").fadeIn(200)
+    $(".popup-add-shelf").fadeIn(200)
 })
 
 $('.orderShelf').click((event) => {
@@ -105,6 +105,7 @@ function setSerialCheckState(serialItem, state, message) {
 
     if (posterInput) {
         posterInput.disabled = !canSubmit
+        posterInput.hidden = status !== 'valid'
     }
 }
 
@@ -124,6 +125,28 @@ function setSerialSubinventoryCode(serialItem, subinventoryCode) {
     subinventory.dataset.tone = code === '23012' ? 'ok' : 'warn'
 }
 
+function setSerialUnavailableState(serialItem) {
+    if (!serialItem) {
+        return
+    }
+
+    const subinventory = serialItem.querySelector('.serial-subinventory')
+    const posterInput = serialItem.querySelector('input[name="posters[]"]')
+    if (!subinventory) {
+        return
+    }
+
+    subinventory.hidden = false
+    subinventory.textContent = 'not available'
+    subinventory.removeAttribute('data-tone')
+    subinventory.dataset.tone = 'warn'
+
+    if (posterInput) {
+        posterInput.hidden = true
+        posterInput.disabled = true
+    }
+}
+
 function checkSerialDetails(serial) {
     if (Object.prototype.hasOwnProperty.call(shelfSerialCheckCache, serial)) {
         return Promise.resolve(shelfSerialCheckCache[serial])
@@ -138,7 +161,8 @@ function checkSerialDetails(serial) {
         }).done((response) => {
             const details = {
                 exists: !!(response && response.exists),
-                subinventoryCode: response && response.subinventory_code ? response.subinventory_code : ''
+                subinventoryCode: response && response.subinventory_code ? response.subinventory_code : '',
+                canonicalSerial: response && response.serial ? String(response.serial) : ''
             }
             shelfSerialCheckCache[serial] = details
             resolve(details)
@@ -166,17 +190,40 @@ function checkSerialItem(serialItem) {
             return details.exists
         }
 
-        setSerialSubinventoryCode(serialItem, details.exists ? details.subinventoryCode : '')
+        // لو السيريال الحقيقي في DB مختلف عن المدخل (مثلاً أُزيلت S الزائدة)
+        // نحدّث العرض والـ hidden input وdata-serial بالقيمة الحقيقية
+        const canonical = details.canonicalSerial && details.canonicalSerial.trim()
+        if (canonical && canonical !== serial) {
+            serialItem.dataset.serial = canonical
+
+            const serialValueEl = serialItem.querySelector('.serial-value')
+            if (serialValueEl) {
+                serialValueEl.textContent = canonical
+            }
+
+            const serialInput = serialItem.querySelector('input[name="serials[]"]')
+            if (serialInput) {
+                serialInput.value = canonical
+            }
+        }
+
+        const hasSubinventoryCode = details.exists && String(details.subinventoryCode || '').trim() !== ''
+
+        if (hasSubinventoryCode) {
+            setSerialSubinventoryCode(serialItem, details.subinventoryCode)
+        } else {
+            setSerialUnavailableState(serialItem)
+        }
         setSerialCheckState(
             serialItem,
-            details.exists ? 'valid' : 'invalid',
-            details.exists ? 'السيريال موجود' : 'السيريال غير موجود'
+            hasSubinventoryCode ? 'valid' : 'invalid',
+            hasSubinventoryCode ? 'السيريال موجود' : 'not available'
         )
 
-        return details.exists
+        return hasSubinventoryCode
     }).catch(() => {
         if (document.body.contains(serialItem)) {
-            setSerialSubinventoryCode(serialItem, '')
+            setSerialUnavailableState(serialItem)
             setSerialCheckState(serialItem, 'error', 'تعذر التحقق من السيريال')
         }
 
@@ -201,14 +248,9 @@ function syncSerializableSerialInputs() {
     getShelfSerialRows().forEach((row) => {
         const canSubmit = row.dataset.checkStatus === 'valid'
         const serialInput = row.querySelector('input[name="serials[]"]')
-        const posterInput = row.querySelector('input[name="posters[]"]')
 
         if (serialInput) {
             serialInput.disabled = !canSubmit
-        }
-
-        if (posterInput) {
-            posterInput.disabled = !canSubmit
         }
     })
 }
@@ -333,6 +375,7 @@ function add_serial(serialValue, posterValue, source) {
     const subinventoryText = document.createElement('small')
     subinventoryText.className = 'serial-subinventory'
     subinventoryText.hidden = true
+    subinventoryText.setAttribute('aria-live', 'polite')
 
     serialText.appendChild(serialNumber)
     serialText.appendChild(subinventoryText)
@@ -395,11 +438,6 @@ $('#serialAdder').click((event) => {
 })
 
 $('.popup-movein-serials form').on('keydown', (e) => {
-    if (e.keyCode == 13 && $(e.target).is('.serial-poster-input')) {
-        e.preventDefault()
-        return
-    }
-
     if (e.keyCode == 13) {
         add_serial()
         e.preventDefault()
@@ -691,7 +729,7 @@ function commitShelfSerial(serial) {
     lastScannedSerial = serial
     lastScannedSerialAt = now
 
-    if (add_serial(serial, '', 'scan')) {
+    if (add_serial(serial, 'scan')) {
         showShelfToast('success', 'تم إضافة السيريال')
         setScannerStatus('تم إضافة السيريال: ' + serial, 'success')
     } else if (getExistingSerial(serial)) {
@@ -884,7 +922,7 @@ function getShelfOcrWorker() {
         workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
         corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
         langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-        logger: () => {}
+        logger: () => { }
     }).then((worker) => {
         shelfOcrWorker = worker
         return worker.setParameters({
@@ -1027,7 +1065,7 @@ function startNativeBarcodeFallback(video) {
                     break
                 }
             }
-        }).catch(() => {}).finally(() => {
+        }).catch(() => { }).finally(() => {
             shelfNativeBarcodeRunning = false
         })
     }, nativeBarcodeScanIntervalMs)
@@ -1045,7 +1083,7 @@ function terminateShelfOcrWorker() {
     stopShelfOcrFallback()
 
     if (shelfOcrWorker) {
-        shelfOcrWorker.terminate().catch(() => {})
+        shelfOcrWorker.terminate().catch(() => { })
     }
 
     shelfOcrWorker = null
@@ -1196,13 +1234,13 @@ function stopQuaggaBarcodeScanner() {
         if (shelfQuaggaDetectionHandler && typeof Quagga.offDetected === 'function') {
             try {
                 Quagga.offDetected(shelfQuaggaDetectionHandler)
-            } catch (e) {}
+            } catch (e) { }
         }
 
         if (shelfQuaggaActive || shelfQuaggaStarting) {
             try {
                 Quagga.stop()
-            } catch (e) {}
+            } catch (e) { }
         }
     }
 
@@ -1481,7 +1519,7 @@ function startHtml5BarcodeScanner() {
         cameraConfig,
         getShelfBarcodeScannerConfig(),
         onDecoded,
-        () => {}
+        () => { }
     )
 
     startWithCamera({ facingMode: 'environment' }).then(onStarted).catch((error) => {
@@ -1522,7 +1560,7 @@ function startHtml5QrScanner() {
                 handleShelfSerialScan(decodedText)
             }
         },
-        () => {}
+        () => { }
     ).then(() => {
         if (scannerSessionId !== shelfScannerSessionId || shelfSerialScannerMode !== 'qr') {
             return
@@ -1604,12 +1642,12 @@ function stopShelfSerialScanner(hidePanel) {
 
     if (shelfQrScanner) {
         const qrScanner = shelfQrScanner
-        stopActions.push(qrScanner.stop().catch(() => {}).then(() => {
+        stopActions.push(qrScanner.stop().catch(() => { }).then(() => {
             if (typeof qrScanner.clear === 'function') {
                 try {
                     const clearResult = qrScanner.clear()
                     if (clearResult && typeof clearResult.catch === 'function') {
-                        return clearResult.catch(() => {})
+                        return clearResult.catch(() => { })
                     }
                 } catch (e) {
                     return undefined

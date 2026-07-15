@@ -38,6 +38,12 @@ document.addEventListener('DOMContentLoaded', function() {
             enableTime: false,
             mode: "single"
         });
+
+        document.querySelectorAll('.is-locked-date').forEach((input) => {
+            if (input._flatpickr) {
+                input._flatpickr.set('clickOpens', false);
+            }
+        });
         console.log('تم تفعيل حقول التاريخ بنجاح');
     } else {
         console.error('مكتبة flatpickr غير محملة');

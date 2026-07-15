@@ -479,10 +479,34 @@ $can_show_shelf_products = $CI->get_permission_enabled('shelves.items.view');
     background: #fbfffd;
 }
 
-.serial-check-invalid,
+.serial-check-invalid {
+    border-color: #f1b8b3;
+    background: antiquewhite !important;
+}
+
 .serial-check-error {
     border-color: #f1b8b3;
-    background: #fff8f7;
+    background: #ffecec;
+}
+
+.serial-check-invalid .serial-status-badge {
+    background: #ffd7d4;
+    border-inline-start-color: #f1b8b3;
+}
+
+.serial-check-error .serial-status-badge {
+    background: #ffd7d4;
+    border-inline-start-color: #f1b8b3;
+}
+
+.serial-check-invalid i {
+    background: #ffe2df;
+    border-inline-start-color: #f1b8b3;
+}
+
+.serial-check-error i {
+    background: #ffe2df;
+    border-inline-start-color: #f1b8b3;
 }
 
 .serial-status-badge {
@@ -515,29 +539,6 @@ $can_show_shelf_products = $CI->get_permission_enabled('shelves.items.view');
 
 .serial-status-badge[data-state="pending"] {
     color: #4b55c7;
-}
-
-.serial-poster-input {
-    width: min(42%, 220px);
-    min-width: 132px;
-    height: 100%;
-    padding: 8px 10px;
-    border: 0;
-    border-inline-start: 1px solid #dbe5f4;
-    outline: none;
-    color: #25364d;
-    font-size: 16px;
-    font-weight: 700;
-    background: #f8fbff;
-}
-
-.serial-poster-input:focus {
-    background: #fff;
-    box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.22);
-}
-
-.serial-poster-input:disabled {
-    opacity: 0.72;
 }
 
 .serial span {
@@ -574,6 +575,10 @@ $can_show_shelf_products = $CI->get_permission_enabled('shelves.items.view');
     font-weight: 800;
     line-height: 1.1;
     color: #b42318;
+}
+
+.serial .serial-subinventory[data-tone="warn"] {
+    color: #d92d20;
 }
 
 .serial .serial-subinventory[data-tone="ok"] {
@@ -684,20 +689,6 @@ $can_show_shelf_products = $CI->get_permission_enabled('shelves.items.view');
 
     .serial .serial-subinventory {
         font-size: 10px;
-    }
-
-    .serial-poster-input {
-        order: initial;
-        flex: 0 0 clamp(76px, 29%, 112px);
-        width: auto;
-        min-width: 0;
-        min-height: 44px;
-        height: auto;
-        padding: 8px 6px;
-        border-inline-start: 1px solid #dbe5f4;
-        border-top: 0;
-        font-size: 13px;
-        text-align: center;
     }
 
     .serial-status-badge {
