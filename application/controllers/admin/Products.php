@@ -1,11 +1,13 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class Products extends MY_Controller {
+class Products extends MY_Controller
+{
 
-	function __construct() {
-		parent::__construct();
-		$this->load->model('Model_admin');
+    function __construct()
+    {
+        parent::__construct();
+        $this->load->model('Model_admin');
         $this->load->model('Model_store_items', 'Store');
         $this->load->model('Model_notifications', 'Notifications');
         $this->load->model('Model_cart', 'Cart');
@@ -20,11 +22,12 @@ class Products extends MY_Controller {
         notifications($this);
         ini_set('memory_limit', '512M');
         date_default_timezone_set('Asia/Riyadh');
-	}
-    
+    }
 
-    public function add() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+
+    public function add()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
@@ -50,7 +53,8 @@ class Products extends MY_Controller {
                 $newData = array();
 
                 foreach ($rows as $row) {
-                    if (empty(array_filter($row, function($v) { return trim((string)$v) !== ''; }))) {
+                    if (empty(array_filter($row, function ($v) {
+                        return trim((string) $v) !== ''; }))) {
                         continue;
                     }
 
@@ -59,7 +63,8 @@ class Products extends MY_Controller {
                     $itemCategory = strtolower(trim(isset($row['B']) ? $row['B'] : ''));
 
                     // تجاهل بطاقات SIM
-                    if (stripos($itemCategory, 'sim') !== false) continue;
+                    if (stripos($itemCategory, 'sim') !== false)
+                        continue;
 
                     $key = null;
                     if ($serialControl === 'yes') {
@@ -72,7 +77,7 @@ class Products extends MY_Controller {
                             'item_description' => $row['D'],
                             'serial_control' => $serialControl,
                             'serial_number' => $serial,
-                            'quantity_total' => (int)(isset($row['G']) ? $row['G'] : 0),
+                            'quantity_total' => (int) (isset($row['G']) ? $row['G'] : 0),
                         );
                     } else {
                         // المنتج بدون سيريال → ندمج الكميات حسب الكود والوصف
@@ -88,12 +93,12 @@ class Products extends MY_Controller {
                                 'quantity_total' => 0,
                             );
                         }
-                        $newData[$key]['quantity_total'] += (int)(isset($row['G']) ? $row['G'] : 0);
+                        $newData[$key]['quantity_total'] += (int) (isset($row['G']) ? $row['G'] : 0);
                     }
                 }
 
                 // جلب البيانات الحالية من قاعدة البيانات
-            
+
                 $currentData = $this->Store->get_store_items();
 
                 // إنشاء قائمة مفاتيح البيانات الحالية
@@ -144,7 +149,7 @@ class Products extends MY_Controller {
                                 'item_description' => $item['item_description'],
                                 'serial_number' => null
                             ])['id'];
-                            
+
 
                             $this->Cart->delete_cart_item(['item_id' => $item_id]);
 
@@ -163,7 +168,7 @@ class Products extends MY_Controller {
                                 'serial_control' => $data['serial_control'],
                                 'quantity_total' => $data['quantity_total'],
                             ),
-                            $data['serial_control'] === 'yes' ? 
+                            $data['serial_control'] === 'yes' ?
                             array(
                                 'item_code' => $data['item_code'],
                                 'item_description' => $data['item_description'],
@@ -196,7 +201,7 @@ class Products extends MY_Controller {
             } catch (Exception $e) {
                 $uploadStatus = 'error';
                 $uploadMessage = "حدث خطأ أثناء معالجة الملف: " . $e->getMessage();
-                
+
             }
         }
 
@@ -206,7 +211,8 @@ class Products extends MY_Controller {
         $this->load->view('products/add', $this->data);
     }
 
-    function edit() {
+    function edit()
+    {
         if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
@@ -223,7 +229,7 @@ class Products extends MY_Controller {
         $totalQuantity = $this->Store->get_store_unique_items_count(['i.item_code' => $item_code]);
 
 
-        $text_danger = ((int)$totalQuantity === 0) ? 'text-danger' : '';
+        $text_danger = ((int) $totalQuantity === 0) ? 'text-danger' : '';
 
         // جلب بيانات المنتج الأساسية
         $product = $this->Store->get_store_item(['item_code' => $item_code]);
@@ -253,7 +259,8 @@ class Products extends MY_Controller {
         $this->load->view('products/edit', $this->data);
     }
 
-    function update_basic_product_data() {
+    function update_basic_product_data()
+    {
         if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
@@ -262,7 +269,7 @@ class Products extends MY_Controller {
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $item_id = $this->input->post('item_id');
-            
+
             if ($item_id) {
                 $item_description = $this->input->post('item_description');
                 $item_code = $this->input->post('item_code');
@@ -281,12 +288,13 @@ class Products extends MY_Controller {
                     ]
                 );
 
-                header("Location:../products/edit?item_code=".$item_code);
+                header("Location:../products/edit?item_code=" . $item_code);
             }
         }
     }
 
-    function update_extra_product_data() {
+    function update_extra_product_data()
+    {
         if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
@@ -305,11 +313,11 @@ class Products extends MY_Controller {
                     // Generate a unique image name
                     $imageName = uniqid() . '_' . preg_replace('/\s+/', '_', $image);
 
-                    $_FILES['userfile']['name']     = $imageName;
-                    $_FILES['userfile']['type']     = $images['type'][$key];
+                    $_FILES['userfile']['name'] = $imageName;
+                    $_FILES['userfile']['type'] = $images['type'][$key];
                     $_FILES['userfile']['tmp_name'] = $images['tmp_name'][$key];
-                    $_FILES['userfile']['error']    = $images['error'][$key];
-                    $_FILES['userfile']['size']     = $images['size'][$key];
+                    $_FILES['userfile']['error'] = $images['error'][$key];
+                    $_FILES['userfile']['size'] = $images['size'][$key];
 
                     // Move the uploaded image to the desired directory
                     $config['upload_path'] = './public/img/products';
@@ -351,7 +359,7 @@ class Products extends MY_Controller {
                 foreach ($removed_images as $image_id) {
                     # remove the file from storage
                     $image = $this->Store->get_store_item_image($image_id);
-                    unlink('./public/img/products/'.$image['filename']);
+                    unlink('./public/img/products/' . $image['filename']);
                     $this->Store->delete_item_image($image_id);
                 }
             }
@@ -369,12 +377,13 @@ class Products extends MY_Controller {
                 ]
             );
 
-            header("Location:../products/edit?item_code=".$item_code);
+            header("Location:../products/edit?item_code=" . $item_code);
         }
-        
+
     }
 
-    function low() {
+    function low()
+    {
         if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
@@ -383,27 +392,29 @@ class Products extends MY_Controller {
 
         $this->data['low_products'] = $this->Store->get_low_products();
 
-		$this->load->view('products/low', $this->data);
-	}
+        $this->load->view('products/low', $this->data);
+    }
 
-    function search() {
-	    if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
-
-        $this->check_permission('product_search.view');
-        
-        $this->data['cart'] = $this->Cart->get_cart_items();
-        $this->data['employees'] = $this->Model_admin->getemployees();
-		$this->load->view('products/search', $this->data);
-	}
-
-
-    function get_item_categories_by_serial_part() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function search()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
-        
+
+        $this->check_permission('product_search.view');
+
+        $this->data['cart'] = $this->Cart->get_cart_items();
+        $this->data['employees'] = $this->Model_admin->getemployees();
+        $this->load->view('products/search', $this->data);
+    }
+
+
+    function get_item_categories_by_serial_part()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
+
         $serial_part = $this->input->get('serial_part');
         $items = $this->Store->get_items_by_serialpart($serial_part);
 
@@ -417,12 +428,13 @@ class Products extends MY_Controller {
         echo json_encode($serials_by_category);
     }
 
-    function get_product_by_serial() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function get_product_by_serial()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
-		$serialnumber_input = strtoupper($this->input->get('serial'));
+        $serialnumber_input = strtoupper($this->input->get('serial'));
 
         $item_without_s = $this->Store->get_store_item(['serial_number' => $serialnumber_input]);
         $item_with_s = $this->Store->get_store_item(['serial_number' => preg_replace('/^S/', '', $serialnumber_input, 1)]);
@@ -435,14 +447,14 @@ class Products extends MY_Controller {
         if ($item_without_s != null) {
             $item = $item_without_s;
         } else if ($item_with_s != null) {
-            $item = $item_with_s;            
+            $item = $item_with_s;
         }
 
         $serial_number = $item['serial_number'];
         $remaining_quantity = $this->Store->get_remaining_quantity_by_item_code($item['item_code']);
 
         $shelf_id = $this->Store->get_item_shelf($item['item_code'], $item['serial_number'], $item['barcode']);
-        $shelf_name = 'not available';
+        $shelf_name = 'Not Available';
 
         if ($shelf_id != null) {
             $shelf = $this->Shelves->get_one_shelf_by_id($shelf_id);
@@ -453,7 +465,7 @@ class Products extends MY_Controller {
         }
 
         $item_imgs = $this->Store->get_store_item_images($item['item_code']);
-        
+
         $images = array();
         if (count($item_imgs) > 0) {
             foreach ($item_imgs as $img) {
@@ -471,8 +483,8 @@ class Products extends MY_Controller {
             'serial_control' => $item['serial_control'],
             'total_quantity' => $remaining_quantity,
             'shelf' => $shelf_name,
-			'serial_number' => $serial_number,
-			'poster_number' => empty($item['poster_number']) ? 'غير محدد' : $item['poster_number'],
+            'serial_number' => $serial_number,
+            'poster_number' => empty($item['poster_number']) ? 'غير محدد' : $item['poster_number'],
             'images' => $images
         ];
 
@@ -483,7 +495,7 @@ class Products extends MY_Controller {
             $data['status'] = 'custody_product';
             $data['description'] = 'السيريال مسجل بالفعل في عهدة موظف';
             if ($permission_to_return_custody) {
-                $data['description'] .= " <span class = 'remCustody' onclick = 'remove_custody(". $custody['id']. ")'>إرجاع</span>";
+                $data['description'] .= " <span class = 'remCustody' onclick = 'remove_custody(" . $custody['id'] . ")'>إرجاع</span>";
             }
             echo json_encode($data);
             return;
@@ -495,10 +507,10 @@ class Products extends MY_Controller {
 
             $request = $requests[0];
             $data['status'] = 'delivered_product';
-			$data['description'] = 'السيريال مسجل لدى احد مناديب التوصيل';
+            $data['description'] = 'السيريال مسجل لدى احد مناديب التوصيل';
 
             if ($permission_to_return_delivery) {
-                $data['description'] .= " <span class = 'remCustody' onclick = 'remove_request(". $request['id']. ")'>إرجاع</span>";
+                $data['description'] .= " <span class = 'remCustody' onclick = 'remove_request(" . $request['id'] . ")'>إرجاع</span>";
             }
             echo json_encode($data);
             return;
@@ -506,17 +518,18 @@ class Products extends MY_Controller {
 
 
         if ($this->Cart->search_item(['item_id' => $item['id']]) == true) {
-			$data['status'] = 'in_cart';
-			$data['description'] = 'السيريال مسجل بالفعل في السلة';
+            $data['status'] = 'in_cart';
+            $data['description'] = 'السيريال مسجل بالفعل في السلة';
             echo json_encode($data);
             return;
-		}
+        }
 
         echo json_encode($data);
     }
 
-    function get_product_by_item_code() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function get_product_by_item_code()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
@@ -554,7 +567,7 @@ class Products extends MY_Controller {
         }
 
         $item_imgs = $this->Store->get_store_item_images($item['item_code']);
-        
+
         $images = array();
         if (count($item_imgs) > 0) {
             foreach ($item_imgs as $img) {
@@ -571,18 +584,19 @@ class Products extends MY_Controller {
             'serial_control' => $item['serial_control'],
             'total_quantity' => $remaining_quantity,
             'shelf' => $shelf_name,
-			'barcode' => $item['barcode'] != null ? $item['barcode'] : '',
-			'poster_number' => 'غير محدد',
+            'barcode' => $item['barcode'] != null ? $item['barcode'] : '',
+            'poster_number' => empty($item['poster_number']) ? 'غير محدد' : $item['poster_number'],
             'images' => $images
         ];
 
         echo json_encode($data);
     }
 
-    function add_item_to_cart() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
+    function add_item_to_cart()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($this->get_permission_enabled('product_search.cart.add') == false) {
@@ -591,10 +605,10 @@ class Products extends MY_Controller {
             }
 
             $item_id = $this->input->post('item_id');
-			$serial_control = $this->input->post('serial_control');
+            $serial_control = $this->input->post('serial_control');
 
-			if ($this->Cart->search_item(['item_id' => $item_id]) == true && $serial_control == 'yes') {
-				echo json_encode(['status' => 'error', 'msg' => 'Item already added to cart']);
+            if ($this->Cart->search_item(['item_id' => $item_id]) == true && $serial_control == 'yes') {
+                echo json_encode(['status' => 'error', 'msg' => 'Item already added to cart']);
 
 
             } else if ($serial_control == 'no') {
@@ -607,35 +621,37 @@ class Products extends MY_Controller {
                     $this->Cart->add_cart_item(['item_id' => $item_id, 'serial_control' => $serial_control]);
                     echo json_encode(['status' => 'ok', 'msg' => 'Item added to cart']);
                 }
-			} else {
-				$this->Cart->add_cart_item(['item_id' => $item_id, 'serial_control' => $serial_control]);
+            } else {
+                $this->Cart->add_cart_item(['item_id' => $item_id, 'serial_control' => $serial_control]);
                 echo json_encode(['status' => 'ok', 'msg' => 'Item added to cart']);
-			}
+            }
 
-            
+
         }
     }
 
-	function remove_cart_item() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
+    function remove_cart_item()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
 
-		if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($this->get_permission_enabled('product_search.cart.remove') == false) {
                 echo 'no_permission';
                 return;
             }
-            
-			$this->Cart->delete_cart_item(['id' => $this->input->post('id')]);
+
+            $this->Cart->delete_cart_item(['id' => $this->input->post('id')]);
             echo $this->input->post('id');
-		}
-	}
-	
-	function delete_selected_cart_items() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
+        }
+    }
+
+    function delete_selected_cart_items()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $selected_cart_items = $this->input->post('selected');
@@ -643,10 +659,11 @@ class Products extends MY_Controller {
                 $this->Cart->delete_cart_item(['id' => $selected_cart_item]);
             }
         }
-	}
+    }
 
-    function add_item_as_custody() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function add_item_as_custody()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
@@ -662,7 +679,7 @@ class Products extends MY_Controller {
 
             $item = $this->Store->get_store_item(['id' => $item_id]);
             $remaining_count = $this->Store->get_remaining_quantity_by_item_code($item['item_code']);
-        
+
 
             if ($item['serial_control'] == 'yes') {
                 if (count($this->Custodys->get_custodys(['item_code' => $item['item_code'], 'serial_number' => $item['serial_number']])) > 0) {
@@ -711,8 +728,9 @@ class Products extends MY_Controller {
         }
     }
 
-    function remove_custody() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function remove_custody()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
@@ -734,8 +752,9 @@ class Products extends MY_Controller {
         }
     }
 
-    function add_product_to_delivery() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function add_product_to_delivery()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
@@ -756,7 +775,7 @@ class Products extends MY_Controller {
                     return;
                 }
 
-                
+
                 if ($this->Requests->get_requests_length(['item_code' => $item['item_code'], 'serial_number' => $item['serial_number']]) > 0) {
                     echo json_encode(['msg' => 'المنتج بالفعل تم تسليمه للتوصيل', 'status' => 'wrong']);
                     return;
@@ -779,12 +798,13 @@ class Products extends MY_Controller {
                 $this->Operations->add_operation(['item_description' => $item['item_description'], 'item_code' => $item['item_code'], 'serial' => $item['serial_number'], 'operation' => 'تم تسليم المنتج للتوصيل', 'sales_order' => '0'], $this->session->userdata('user_id'));
             }
 
-		    echo json_encode(['msg' => 'تم تسليم المنتج للتوصيل', 'status' => 'ok']);
+            echo json_encode(['msg' => 'تم تسليم المنتج للتوصيل', 'status' => 'ok']);
         }
     }
 
-    function product_delivery_return() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+    function product_delivery_return()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
             redirect(base_url());
         }
 
@@ -795,7 +815,7 @@ class Products extends MY_Controller {
             redirect(base_url() . MOD_VALUE . 'admin/products/search');
         }
 
-        
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $request_id = $this->input->post('id');
             $request = $this->Requests->get_one_request_by_id($request_id);
@@ -810,15 +830,16 @@ class Products extends MY_Controller {
         }
     }
 
-    function operations() {
-        if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
+    function operations()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
 
         $this->check_permission('operations.view');
 
         $this->data['info'] = ['name' => '', 'code' => ''];
-        
+
 
         $serial = $this->input->get('serial');
         $this->data['serial'] = '';
@@ -844,7 +865,7 @@ class Products extends MY_Controller {
             $operations = $operations_with_s;
         }
 
-		if ($operations == null) {
+        if ($operations == null) {
             $this->data['info'] = ['name' => '', 'code' => ''];
         } else {
             $this->data['info'] = ['name' => $operations[0]['item_description'], 'code' => $operations[0]['item_code']];
@@ -852,7 +873,7 @@ class Products extends MY_Controller {
         }
 
         $this->data['operations'] = $operations;
-        
+
         $this->load->view('view_admin_operations', $this->data);
     }
 }

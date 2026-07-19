@@ -55,8 +55,7 @@ class Shelves extends MY_Controller
                     $posters = array();
                 }
 
-                $i = 0;
-                foreach ($serials as $serial_number) {
+                foreach ($serials as $i => $serial_number) {
                     if ($serial_number == '') {
                         $errors .= 'السيريال فارغ' . '<br><br>';
                         continue;
@@ -79,12 +78,24 @@ class Shelves extends MY_Controller
                         }
                         $this->Store->move_item_to_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode'], $shelf_id);
 
+                        $poster = isset($posters[$i]) ? trim($posters[$i]) : '';
+                        if (!$this->db->field_exists('poster_number', 'current_store_items')) {
+                            $this->load->dbforge();
+                            $this->dbforge->add_column('current_store_items', array(
+                                'poster_number' => array(
+                                    'type' => 'VARCHAR',
+                                    'constraint' => '255',
+                                    'null' => TRUE,
+                                    'default' => ''
+                                )
+                            ));
+                        }
+                        $this->Store->update_store_item(['poster_number' => $poster], ['id' => $item['id']]);
+
                     } else {
                         $errors .= 'السيريال غير موجود' . '<br>';
                         continue;
                     }
-
-                    $i++;
                 }
 
                 if ($errors != '') {

@@ -29,7 +29,7 @@ const productsBaseUrl = appBaseUrl + 'admin/products/'
 function showAddToCart() {
   try {
     document.querySelector('.serialAdd').classList.remove('hide');
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function hideAddToCart() {
@@ -40,23 +40,23 @@ function hideAddToCart() {
 serialNumber.focus()
 
 function sync_product_search_layout() {
-    if (!prod_form || !prod_infos) return;
-    const hasResult = !prod_infos.classList.contains('hide');
-    prod_form.classList.toggle('has-result', hasResult);
+  if (!prod_form || !prod_infos) return;
+  const hasResult = !prod_infos.classList.contains('hide');
+  prod_form.classList.toggle('has-result', hasResult);
 }
 
 if (prod_form && prod_infos) {
-    sync_product_search_layout();
-    new MutationObserver(sync_product_search_layout).observe(prod_infos, {
-        attributes: true,
-        attributeFilter: ['class']
-    });
+  sync_product_search_layout();
+  new MutationObserver(sync_product_search_layout).observe(prod_infos, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
 }
 
 function close_product_details() {
-    if (!prod_infos) return;
-    prod_infos.classList.add("hide");
-    sync_product_search_layout();
+  if (!prod_infos) return;
+  prod_infos.classList.add("hide");
+  sync_product_search_layout();
 }
 
 if (productDetailsClose) {
@@ -65,98 +65,112 @@ if (productDetailsClose) {
 
 
 function set_data(data) {
-    var image_path = 'default_product_image.png';
-    var product_images = Array.isArray(data['images']) && data['images'].length ? data['images'] : [image_path];
-    const itemShelfCell = document.getElementById('item_shelf');
-    const subinventoryCell = document.getElementById('subinventory_code');
-    
-    $('.product-gallery-extra').remove();
-    $('#product_name').text(data['name']);
-    
-    if (data['shelf'].includes('movedToEmployee')) {
-        $('#item_shelf').text('تم تسليمه');
+  var image_path = 'default_product_image.png';
+  var product_images = Array.isArray(data['images']) && data['images'].length ? data['images'] : [image_path];
+  const itemShelfCell = document.getElementById('item_shelf');
+  const subinventoryCell = document.getElementById('subinventory_code');
+
+  $('.product-gallery-extra').remove();
+  $('#product_name').text(data['name']);
+
+  if (data['shelf'].includes('movedToEmployee')) {
+    $('#item_shelf').text('تم تسليمه');
+  } else {
+    $('#item_shelf').text(data['shelf'] === 'غير موجود في رف' ? 'not available' : data['shelf']);
+  }
+
+  if (itemShelfCell) {
+    itemShelfCell.classList.toggle('product-cell-unavailable', $('#item_shelf').text() === 'not available');
+  }
+
+  $('#item_code').text(data['code']);
+  $('#serial_number').text(data['serial_number'] || 'لا يوجد');
+  $('#subinventory_code').text(data['subinventory_code'] || '');
+  if (subinventoryCell) {
+    const subinventoryCode = String(data['subinventory_code'] || '').trim();
+    subinventoryCell.classList.remove('product-cell-subinventory-strong', 'product-cell-subinventory-soft');
+    if (subinventoryCode === '23012') {
+      subinventoryCell.style.background = '';
+      subinventoryCell.style.color = '';
+      subinventoryCell.style.fontWeight = '';
+    } else if (subinventoryCode === 'RESV_23012') {
+      subinventoryCell.style.background = '#ffe51b96';
+      subinventoryCell.style.color = '';
+      subinventoryCell.style.fontWeight = '800';
+    } else if (subinventoryCode) {
+      subinventoryCell.style.background = '#ff393980';
+      subinventoryCell.style.color = 'black';
+      subinventoryCell.style.fontWeight = '800';
     } else {
-        $('#item_shelf').text(data['shelf'] === 'غير موجود في رف' ? 'not available' : data['shelf']);
+      subinventoryCell.style.background = '';
+      subinventoryCell.style.color = '';
+      subinventoryCell.style.fontWeight = '';
     }
+  }
+  $('#total_quantity').text(data['total_quantity']);
+  $('#product_image').attr('href', appBaseUrl + 'public/img/products/' + product_images[0]);
+  $('#product_image').attr('data-caption', data['name']);
+  $('#product_image img').attr('src', appBaseUrl + 'public/img/products/' + product_images[0]);
 
-    if (itemShelfCell) {
-      itemShelfCell.classList.toggle('product-cell-unavailable', $('#item_shelf').text() === 'not available');
-    }
+  product_images.slice(1).forEach((image, index) => {
+    const galleryLink = document.createElement('a');
+    galleryLink.className = 'product-image-preview hide';
+    galleryLink.href = appBaseUrl + 'public/img/products/' + image;
+    galleryLink.dataset.fancybox = 'product-gallery';
+    galleryLink.dataset.caption = `${data['name']} - ${index + 2}`;
+    const galleryImg = document.createElement('img');
+    galleryImg.src = appBaseUrl + 'public/img/products/' + image;
+    galleryLink.appendChild(galleryImg);
+    $('#gallery_images').append(galleryLink);
+  });
 
-    $('#item_code').text(data['code']);
-    $('#serial_number').text(data['serial_number'] || 'لا يوجد');
-    $('#subinventory_code').text(data['subinventory_code'] || '');
-    if (subinventoryCell) {
-      const subinventoryCode = String(data['subinventory_code'] || '').trim();
-      subinventoryCell.classList.remove('product-cell-subinventory-strong', 'product-cell-subinventory-soft');
-      if (subinventoryCode) {
-        subinventoryCell.classList.add(subinventoryCode === '23012' ? 'product-cell-subinventory-strong' : 'product-cell-subinventory-soft');
-      }
-    }
-    $('#total_quantity').text(data['total_quantity']);
-    $('#product_image').attr('href', appBaseUrl + 'public/img/products/' + product_images[0]);
-    $('#product_image').attr('data-caption', data['name']);
-    $('#product_image img').attr('src', appBaseUrl + 'public/img/products/' +  product_images[0]);
+  $('#poster_number').text(data['poster_number']);
 
-    product_images.slice(1).forEach((image, index) => {
-      const galleryLink = document.createElement('a');
-      galleryLink.className = 'product-image-preview hide';
-      galleryLink.href = appBaseUrl + 'public/img/products/' + image;
-      galleryLink.dataset.fancybox = 'product-gallery';
-      galleryLink.dataset.caption = `${data['name']} - ${index + 2}`;
-      const galleryImg = document.createElement('img');
-      galleryImg.src = appBaseUrl + 'public/img/products/' + image;
-      galleryLink.appendChild(galleryImg);
-      $('#gallery_images').append(galleryLink);
-    });
+  product_data['name'] = data['name'];
+  product_data['id'] = data['id'];
+  product_data['serial_control'] = data['serial_control'];
 
-    $('#poster_number').text(data['poster_number']);
-
-    product_data['name'] = data['name'];
-    product_data['id'] = data['id'];
-    product_data['serial_control'] = data['serial_control'];
-
-    if (data['serial_control'] == 'no') {
-      product_data['barcode'] = data['barcode'];
-      $('#item_barcode').text(product_data['barcode']);
-    } else {
-      product_data['serial'] = data['serial_number'];
-      $('#item_barcode').text('لا يوجد');
-    }
+  if (data['serial_control'] == 'no') {
+    product_data['barcode'] = data['barcode'];
+    $('#item_barcode').text(product_data['barcode']);
+  } else {
+    product_data['serial'] = data['serial_number'];
+    $('#item_barcode').text('لا يوجد');
+  }
 
 }
 
 function get_product_by_serial(serial) {
-  $.get(productsBaseUrl + 'get_product_by_serial?serial=' + encodeURIComponent(serial), function(data) {
+  $.get(productsBaseUrl + 'get_product_by_serial?serial=' + encodeURIComponent(serial), function (data) {
     data = JSON.parse(data);
 
     if (data['status'] == 'ok') {
-        set_data(data);
-        checkBtn.classList.remove("hide");
-        prod_infos.classList.remove("hide");
-        verification.classList.remove("hide");
-        verificationInput.focus()
-        nextBtn.classList.add("hide");
+      set_data(data);
+      checkBtn.classList.remove("hide");
+      prod_infos.classList.remove("hide");
+      verification.classList.remove("hide");
+      verificationInput.focus()
+      nextBtn.classList.add("hide");
 
     } else if (data['status'] == 'custody_product' || data['status'] == 'delivered_product' || data['status'] == 'in_cart') {
-        set_data(data);
-        prod_infos.classList.remove("hide");
-        nextBtn.classList.add("hide");
-        document.querySelector('#serialNumberError').innerHTML = data['description'];
-        document.querySelector('#serialNumberError').classList.remove('hide');
-        $('#serialNumberHistory a').attr('href', productsBaseUrl + 'operations?serial=' + encodeURIComponent(product_data['serial']))
-        $('#serialNumberHistory').removeClass('hide')
-        
+      set_data(data);
+      prod_infos.classList.remove("hide");
+      nextBtn.classList.add("hide");
+      document.querySelector('#serialNumberError').innerHTML = data['description'];
+      document.querySelector('#serialNumberError').classList.remove('hide');
+      $('#serialNumberHistory a').attr('href', productsBaseUrl + 'operations?serial=' + encodeURIComponent(product_data['serial']))
+      $('#serialNumberHistory').removeClass('hide')
+
     } else {
-        document.querySelector('#serialNumberError').innerText = data['description'];
-        document.querySelector('#serialNumberError').classList.remove('hide');
-        serialNumber.disabled = false;
+      document.querySelector('#serialNumberError').innerText = data['description'];
+      document.querySelector('#serialNumberError').classList.remove('hide');
+      serialNumber.disabled = false;
     }
   })
 }
 
 function get_item_categories_by_serial_part(serial_part) {
-  $.get(productsBaseUrl + 'get_item_categories_by_serial_part?serial_part=' + encodeURIComponent(serial_part), function(data) {
+  $.get(productsBaseUrl + 'get_item_categories_by_serial_part?serial_part=' + encodeURIComponent(serial_part), function (data) {
 
     if (data === '[]') {
       document.querySelector('#serialNumberError').innerText = 'السيريال غير موجود';
@@ -190,52 +204,52 @@ function get_item_categories_by_serial_part(serial_part) {
 }
 
 function nextBtn_handler() {
-    if(serialNumber.value.length < 6){
-        document.getElementById("serialNumberError").classList.remove("hide");
-        document.querySelector('#serialNumberHistory').classList.add('hide');
+  if (serialNumber.value.length < 6) {
+    document.getElementById("serialNumberError").classList.remove("hide");
+    document.querySelector('#serialNumberHistory').classList.add('hide');
+  } else {
+    document.getElementById("serialNumberError").classList.add("hide");
+    document.querySelector('#serialNumberHistory').classList.add('hide')
+
+    if (radios_enabled == true && checkRadio()) {
+      disableRadios();
+      verification.classList.remove("hide");
+      verificationInput.focus()
+      checkBtn.classList.remove("hide");
+      nextBtn.classList.add("hide");
+
+    } else if (serialNumber.value.length < 7) {
+      get_item_categories_by_serial_part(serialNumber.value);
+
     } else {
-        document.getElementById("serialNumberError").classList.add("hide");
-        document.querySelector('#serialNumberHistory').classList.add('hide')
-
-        if (radios_enabled == true && checkRadio()) {
-            disableRadios();
-            verification.classList.remove("hide");
-            verificationInput.focus()
-            checkBtn.classList.remove("hide");
-            nextBtn.classList.add("hide");
-
-        } else if (serialNumber.value.length < 7) {
-            get_item_categories_by_serial_part(serialNumber.value);
-
-        } else {
-            showAddToCart();
-            get_product_by_serial(serialNumber.value);
-        }
+      showAddToCart();
+      get_product_by_serial(serialNumber.value);
     }
-    
+  }
+
 }
 
 nextBtn.onclick = () => {
-    nextBtn_handler()
+  nextBtn_handler()
 }
 
 $('#serialNumberInput').on('keypress', (event) => {
-    let key = event.key;
-    if (key == 'Enter') {
-        event.preventDefault()
-        nextBtn_handler();
-    }
+  let key = event.key;
+  if (key == 'Enter') {
+    event.preventDefault()
+    nextBtn_handler();
+  }
 })
 
 function enable_radios() {
-    radios = document.getElementsByName('productType');
-    radios_enabled = true;
-    radios.forEach(radioInput => {
-        radioInput.addEventListener('click', function() {
-            showAddToCart();
-            get_product_by_serial(radioInput.value);
-        });
+  radios = document.getElementsByName('productType');
+  radios_enabled = true;
+  radios.forEach(radioInput => {
+    radioInput.addEventListener('click', function () {
+      showAddToCart();
+      get_product_by_serial(radioInput.value);
     });
+  });
 }
 
 function checkRadio() {
@@ -254,33 +268,33 @@ function checkRadio() {
 
 function disableRadios() {
   radios = document.querySelectorAll('input[type="radio"][name="productType"]');
-  radios.forEach(function(radio) {
-      radio.disabled = true;
+  radios.forEach(function (radio) {
+    radio.disabled = true;
   });
 }
 
 function enable_delivery_step() {
-    checkBtn.classList.add("hide");
-    try {
-      deliveryBtn.classList.remove("hide");
-    } catch (error) {}
-    startOverBtn.classList.remove("hide");
-    verificationInput.disabled = true;
-    serialNumber.disabled = true;
+  checkBtn.classList.add("hide");
+  try {
+    deliveryBtn.classList.remove("hide");
+  } catch (error) { }
+  startOverBtn.classList.remove("hide");
+  verificationInput.disabled = true;
+  serialNumber.disabled = true;
 }
 
 function checkBtn_handler() {
-    if ((serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase() || 'S' +  serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase()) && !checkRadio()) {
-        enable_delivery_step();
-        checkResult.innerHTML = checkResultMsgAccepted;
-        $('#serialHistory').removeClass('hide')
-    } else if (serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase()) {
-        enable_delivery_step();
-        checkResult.innerHTML = checkResultMsgAccepted;
-        $('#serialHistory').removeClass('hide')
-    } else {
-        checkResult.innerHTML = checkResultMsgRejected
-    }
+  if ((serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase() || 'S' + serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase()) && !checkRadio()) {
+    enable_delivery_step();
+    checkResult.innerHTML = checkResultMsgAccepted;
+    $('#serialHistory').removeClass('hide')
+  } else if (serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase()) {
+    enable_delivery_step();
+    checkResult.innerHTML = checkResultMsgAccepted;
+    $('#serialHistory').removeClass('hide')
+  } else {
+    checkResult.innerHTML = checkResultMsgRejected
+  }
 }
 
 checkBtn.onclick = () => {
@@ -288,19 +302,19 @@ checkBtn.onclick = () => {
 }
 
 $('#verificationInput').on('keypress', (event) => {
-    let key = event.key;
-    if (key == 'Enter') {
-        event.preventDefault()
-        checkBtn_handler();
-    }
+  let key = event.key;
+  if (key == 'Enter') {
+    event.preventDefault()
+    checkBtn_handler();
+  }
 })
 
 try {
   deliveryBtn.onclick = () => {
-      process_type = 'addProductSearched'
-      delivery_popup.classList.remove("hide");
+    process_type = 'addProductSearched'
+    delivery_popup.classList.remove("hide");
   }
-} catch (error) {}
+} catch (error) { }
 
 
 
@@ -318,73 +332,73 @@ let newProd_infos = document.querySelector(".prod_infos");
 let newSelect_type = document.querySelector(".newSelect_type");
 
 function newNextBtn_handler() {
-    if (itemCode.value.length < 1){
-        document.querySelector('.newserialAdd').classList.add('hide')
+  if (itemCode.value.length < 1) {
+    document.querySelector('.newserialAdd').classList.add('hide')
+    document.getElementById("itemCodeError").classList.remove("hide");
+  } else {
+    document.getElementById("itemCodeError").classList.add("hide");
+
+    $.get(productsBaseUrl + 'get_product_by_item_code?item_code=' + encodeURIComponent(itemCode.value), function (data) {
+      data = JSON.parse(data);
+
+
+      if (data['status'] == 'ok') {
+
+        set_data(data);
+        newVerification.classList.remove("hide");
+        newCheckBtn.classList.remove("hide");
+        itemCode.disabled = true;
+
+        document.querySelector('.newserialAdd').classList.remove('hide')
+        newProd_infos.classList.remove("hide");
+
+      } else {
+        document.getElementById("itemCodeError").innerText = data['description'];
         document.getElementById("itemCodeError").classList.remove("hide");
-    } else {
-        document.getElementById("itemCodeError").classList.add("hide");
+      }
 
-        $.get(productsBaseUrl + 'get_product_by_item_code?item_code=' + encodeURIComponent(itemCode.value), function(data) {
-            data = JSON.parse(data);
-
-            
-            if (data['status'] == 'ok') {
-                
-                set_data(data);
-                newVerification.classList.remove("hide");
-                newCheckBtn.classList.remove("hide");
-                itemCode.disabled = true;
-                
-                document.querySelector('.newserialAdd').classList.remove('hide')
-                newProd_infos.classList.remove("hide");
-                
-            } else {
-                document.getElementById("itemCodeError").innerText = data['description'];
-                document.getElementById("itemCodeError").classList.remove("hide");
-            }
-
-            newNextBtn.classList.add("hide");
-        })
-    }
+      newNextBtn.classList.add("hide");
+    })
+  }
 }
 
 newNextBtn.onclick = () => {
-    newNextBtn_handler()
+  newNextBtn_handler()
 }
 
 $('#itemCodeInput').on('keypress', (event) => {
-    let key = event.key;
-    if (key == 'Enter') {
-        event.preventDefault()
-        newNextBtn_handler();
-    }
+  let key = event.key;
+  if (key == 'Enter') {
+    event.preventDefault()
+    newNextBtn_handler();
+  }
 })
 
 function newCheckBtn_handler() {
-    if(product_data['barcode'].toUpperCase() == newVerificationInput.value.toUpperCase()) {
-        newCheckBtn.classList.add("hide");
-        newProd_infos.classList.remove("hide");
-        try {
-          newDeliveryBtn.classList.remove("hide");
-        } catch (error) {}
-      
-        newVerificationInput.disabled = true;
-        newCheckResult.innerHTML = checkResultMsgAccepted;
-    } else {
-        newCheckResult.innerHTML = checkResultMsgRejected;
-    }
+  if (product_data['barcode'].toUpperCase() == newVerificationInput.value.toUpperCase()) {
+    newCheckBtn.classList.add("hide");
+    newProd_infos.classList.remove("hide");
+    try {
+      newDeliveryBtn.classList.remove("hide");
+    } catch (error) { }
+
+    newVerificationInput.disabled = true;
+    newCheckResult.innerHTML = checkResultMsgAccepted;
+  } else {
+    newCheckResult.innerHTML = checkResultMsgRejected;
+  }
 }
 
 newCheckBtn.onclick = () => {
-    newCheckBtn_handler()
+  newCheckBtn_handler()
 }
 
 $('#newVerification').on('keypress', (event) => {
-    let key = event.key;
-    if (key == 'Enter') {
-        event.preventDefault()
-        newCheckBtn_handler();
-    }
+  let key = event.key;
+  if (key == 'Enter') {
+    event.preventDefault()
+    newCheckBtn_handler();
+  }
 })
 
 try {
@@ -392,7 +406,7 @@ try {
     delivery_popup.classList.remove("hide");
     process_type = 'addProductSearched';
   }
-} catch (error) {}
+} catch (error) { }
 
 let delivery_popup = document.querySelector(".delivery_popup");
 let delivery_popup_btns = document.querySelector(".delivery_popup .btns");
@@ -467,23 +481,23 @@ try {
     document.querySelector(`${delivery_btn[1].dataset.type}`).classList.remove("hide");
     delivery_popup_title.textContent = delivery_btn[1].dataset.title;
   }
-} catch (error) {}
+} catch (error) { }
 
 delivery_popup_close.onclick = () => {
   try {
     document.querySelector(`${delivery_btn[1].dataset.type}`).classList.add("hide");
-  } catch (error) {}
+  } catch (error) { }
   try {
     document.querySelector(`${delivery_btn[0].dataset.type}`).classList.add("hide");
-  } catch (error) {}
+  } catch (error) { }
 
   try {
     delivery_popup_btns.classList.remove("hide");
-  } catch (error) {}
+  } catch (error) { }
 
   try {
     delivery_popup.classList.add("hide");
-  } catch (error) {}
+  } catch (error) { }
 }
 
 startOverBtn.onclick = () => {
@@ -491,32 +505,32 @@ startOverBtn.onclick = () => {
 }
 
 async function register_process(emp_id, item_id, order_number) {
-    cartElements = document.getElementsByClassName('cart-item')
-    
-    if (process_type == 'addProductSearched') {
-        register_custody(emp_id, item_id, order_number)
-    } else {
-        await add_cart_custodies(emp_id, order_number)
-    }
+  cartElements = document.getElementsByClassName('cart-item')
+
+  if (process_type == 'addProductSearched') {
+    register_custody(emp_id, item_id, order_number)
+  } else {
+    await add_cart_custodies(emp_id, order_number)
+  }
 }
 
 async function register_custody(emp_id, item_id, order_number) {
   await $.post(productsBaseUrl + 'add_item_as_custody', {
-    'emp_id' : emp_id, 
-    'item_id' : item_id, 
+    'emp_id': emp_id,
+    'item_id': item_id,
     'order_number': order_number,
   }, (data) => {
     data = JSON.parse(data);
     if (data['status'] == 'ok') {
-        document.querySelector(".popup_employee .content").classList.add("hide");
-        document.querySelector(".popup_employee .done").classList.remove("hide");
-        document.getElementById("popEmplError").classList.add("hide");
-        setTimeout(()=>{
-            delivery_popup.classList.add("hide");
-            delivery_popup_btns.classList.remove("hide");
-            document.querySelector(".popup_employee .done").classList.add("hide");
-            location.reload()
-        },3000)
+      document.querySelector(".popup_employee .content").classList.add("hide");
+      document.querySelector(".popup_employee .done").classList.remove("hide");
+      document.getElementById("popEmplError").classList.add("hide");
+      setTimeout(() => {
+        delivery_popup.classList.add("hide");
+        delivery_popup_btns.classList.remove("hide");
+        document.querySelector(".popup_employee .done").classList.add("hide");
+        location.reload()
+      }, 3000)
     } else if (data['status'] == 'wrong') {
       alert(data['msg']);
     }
@@ -525,39 +539,39 @@ async function register_custody(emp_id, item_id, order_number) {
 
 async function add_cart_custodies(emp_id, order_num) {
 
-    if (selected_items.length > 0) {
-        items_to_remove = [];
-        for (let cartItemId of selected_items) {
-            if (!verified_items.includes(cartItemId)) {
-                alert('يرجي التحقق من الأرقام الخاصة بالمنتجات')
-                return;
-            }
-            
-        }
+  if (selected_items.length > 0) {
+    items_to_remove = [];
+    for (let cartItemId of selected_items) {
+      if (!verified_items.includes(cartItemId)) {
+        alert('يرجي التحقق من الأرقام الخاصة بالمنتجات')
+        return;
+      }
 
-        for (let cartItemId of selected_items) {
-          let cartitem = $('#' + cartItemId);
-          let item_id = cartitem.attr('data-item-id')
-          items_to_remove.push(cartItemId)
-
-          await register_custody(emp_id, item_id, order_num)
-        }
-
-        $.post(productsBaseUrl + 'delete_selected_cart_items', {'selected': items_to_remove}, () => {})
-    } else {
-        if (!verified_items.includes($(accepted_cart_item).attr('id'))) {
-            alert('يرجي التحقق من رقم المنتج')
-            return;
-        }
-
-        let item_id = $(accepted_cart_item).attr('data-item-id')
-
-        await register_custody(emp_id, item_id, order_num)
-        $.post(productsBaseUrl + 'delete_selected_cart_items', {'selected': [$(accepted_cart_item).attr('id')]}, () => {})
     }
-    
 
-    
+    for (let cartItemId of selected_items) {
+      let cartitem = $('#' + cartItemId);
+      let item_id = cartitem.attr('data-item-id')
+      items_to_remove.push(cartItemId)
+
+      await register_custody(emp_id, item_id, order_num)
+    }
+
+    $.post(productsBaseUrl + 'delete_selected_cart_items', { 'selected': items_to_remove }, () => { })
+  } else {
+    if (!verified_items.includes($(accepted_cart_item).attr('id'))) {
+      alert('يرجي التحقق من رقم المنتج')
+      return;
+    }
+
+    let item_id = $(accepted_cart_item).attr('data-item-id')
+
+    await register_custody(emp_id, item_id, order_num)
+    $.post(productsBaseUrl + 'delete_selected_cart_items', { 'selected': [$(accepted_cart_item).attr('id')] }, () => { })
+  }
+
+
+
 }
 
 document.getElementById("popup_employee_btn").onclick = () => {
@@ -572,16 +586,16 @@ document.getElementById("popup_employee_btn").onclick = () => {
 }
 
 document.querySelectorAll(".list li").forEach(elm => {
-  elm.addEventListener('click', function() {
+  elm.addEventListener('click', function () {
     prod_infos.classList.add("hide");
-    if(elm.dataset.elm==".conts"){
+    if (elm.dataset.elm == ".conts") {
       document.querySelector(".conts").classList.remove("hide");
       document.querySelector(".conts2").classList.add("hide");
     } else {
       document.querySelector(".conts").classList.add("hide");
       document.querySelector(".conts2").classList.remove("hide");
     }
-    document.querySelectorAll(".list li").forEach(function(otherItem) {
+    document.querySelectorAll(".list li").forEach(function (otherItem) {
       if (otherItem !== elm) {
         otherItem.classList.remove('active');
       }
@@ -595,7 +609,7 @@ document.querySelectorAll(".list li").forEach(elm => {
 // Image
 Fancybox.bind("[data-fancybox]", {
   Carousel: {
-        Toolbar: {
+    Toolbar: {
       display: {
         left: [],
         middle: [],
@@ -629,48 +643,48 @@ function refreshCartState() {
 
 function register_item_to_cart() {
 
-    $.post(productsBaseUrl + 'add_item_to_cart', {'item_id' : product_data['id'], 'serial_control' : product_data['serial_control']}, (data) => {
-        if (data['status'] == 'error') {
-            alert('المنتج مسجل بالفعل أو الكمية كلها مسجلة في السلة')
-        } else if (data['status'] == 'no_permission') {
-            alert('لا يمكنك اضافة هذا المنتج')
-        } else {
-            location.reload()
-        }
-        
-    }, 'json')
+  $.post(productsBaseUrl + 'add_item_to_cart', { 'item_id': product_data['id'], 'serial_control': product_data['serial_control'] }, (data) => {
+    if (data['status'] == 'error') {
+      alert('المنتج مسجل بالفعل أو الكمية كلها مسجلة في السلة')
+    } else if (data['status'] == 'no_permission') {
+      alert('لا يمكنك اضافة هذا المنتج')
+    } else {
+      location.reload()
+    }
+
+  }, 'json')
 }
 
 function remove_cart_item(event) {
   if (selected_items.length > 0) {
     for (let cartItemId of selected_items) {
-      $.post(productsBaseUrl + 'remove_cart_item', {'id' : cartItemId}, (itemId) => {
+      $.post(productsBaseUrl + 'remove_cart_item', { 'id': cartItemId }, (itemId) => {
         $('#' + itemId).remove();
         refreshCartState();
       })
     }
   } else {
     cartItem = $(event.target).closest('.cart-item')
-    $.post(productsBaseUrl + 'remove_cart_item', {'id' : $(cartItem).attr('id')}, (itemId) => {
-        $('#' + itemId).remove();
-        refreshCartState();
+    $.post(productsBaseUrl + 'remove_cart_item', { 'id': $(cartItem).attr('id') }, (itemId) => {
+      $('#' + itemId).remove();
+      refreshCartState();
     })
   }
-  
+
 }
 
 function accept(event) {
-    let item = $(event.target).closest('.cart-item')
-    process_type = 'addProductsInCart';
-    accepted_cart_item = item
-    delivery_popup.classList.remove("hide");
+  let item = $(event.target).closest('.cart-item')
+  process_type = 'addProductsInCart';
+  accepted_cart_item = item
+  delivery_popup.classList.remove("hide");
 }
 
 $('.rem-btn').click(remove_cart_item)
 
 $('.acc-btn').click(accept)
 
-$(".cart").click(function(){
+$(".cart").click(function () {
   $(".cart-popup").fadeToggle();
 })
 
@@ -692,9 +706,9 @@ document.querySelectorAll(".toggle-input-field").forEach((inputField) => {
       ".verification-result.incorrect"
     );
     const topPart = document.getElementById("top_part");
-    const toggleInputField = this.closest(".toggle-input-field"); 
-    const cartItem = this.closest(".cart-item"); 
-    
+    const toggleInputField = this.closest(".toggle-input-field");
+    const cartItem = this.closest(".cart-item");
+
 
     this.classList.remove("input-success", "input-error");
 
@@ -702,7 +716,7 @@ document.querySelectorAll(".toggle-input-field").forEach((inputField) => {
       if (!verified_items.includes($(cartItem).attr('id'))) {
         verified_items.push($(cartItem).attr('id'));
       }
-      
+
       correctMark.style.visibility = "visible";
       incorrectMark.style.visibility = "hidden";
       this.classList.add("input-success");
@@ -718,7 +732,7 @@ document.querySelectorAll(".toggle-input-field").forEach((inputField) => {
       }
 
       if (cartItem) {
-        cartItem.style.backgroundColor = "#d4edda"; 
+        cartItem.style.backgroundColor = "#d4edda";
       }
     } else {
       correctMark.style.visibility = "hidden";
@@ -736,7 +750,7 @@ document.querySelectorAll(".toggle-input-field").forEach((inputField) => {
 
   inputField.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
-      e.preventDefault(); 
+      e.preventDefault();
       validateInput.call(this);
     }
   });
@@ -770,8 +784,8 @@ function toggleAllSelections(selectAllCheckbox) {
 // remove custody
 
 function remove_custody(user_custody_id) {
-    open_return_popup(() => {
-    $.post(productsBaseUrl + 'remove_custody', {'custody_id' : user_custody_id}, () => {
+  open_return_popup(() => {
+    $.post(productsBaseUrl + 'remove_custody', { 'custody_id': user_custody_id }, () => {
       location.reload();
     });
   });
@@ -780,7 +794,7 @@ function remove_custody(user_custody_id) {
 
 function remove_request(request_id) {
   open_return_popup(() => {
-    $.post(productsBaseUrl + 'product_delivery_return', {'id' : request_id}, () => {
+    $.post(productsBaseUrl + 'product_delivery_return', { 'id': request_id }, () => {
       location.reload();
     });
   });
@@ -791,19 +805,19 @@ function remove_request(request_id) {
 // delivery
 
 function product_delivery_confirm(e) {
-    let order_number = $('#delivery_order_number').val()
-    if (!order_number) {
-        let confirm_ordernumber = confirm('خانة رقم الطلب فارغة, هل تريد الاستمرار؟')
-        if (confirm_ordernumber) {
-          product_delivery(product_data['id'], order_number)
-        }
-    } else {
+  let order_number = $('#delivery_order_number').val()
+  if (!order_number) {
+    let confirm_ordernumber = confirm('خانة رقم الطلب فارغة, هل تريد الاستمرار؟')
+    if (confirm_ordernumber) {
       product_delivery(product_data['id'], order_number)
     }
+  } else {
+    product_delivery(product_data['id'], order_number)
+  }
 
 }
 
-function product_delivery(item_id,  order_number) {
+function product_delivery(item_id, order_number) {
   if (process_type == 'addProductSearched') {
     single_product_delivery(item_id, order_number)
   } else {
@@ -814,21 +828,21 @@ function product_delivery(item_id,  order_number) {
 function single_product_delivery(item_id, order_number) {
 
   $.post(productsBaseUrl + 'add_product_to_delivery', {
-    'item_id' : item_id, 
+    'item_id': item_id,
     'order_number': order_number,
   }, (data) => {
 
     data = JSON.parse(data);
     if (data['status'] == 'ok') {
-        document.querySelector(".popup_delivery .content").classList.add("hide");
-        document.querySelector(".popup_delivery .done").classList.remove("hide");
+      document.querySelector(".popup_delivery .content").classList.add("hide");
+      document.querySelector(".popup_delivery .done").classList.remove("hide");
 
-        setTimeout(()=>{
-            delivery_popup.classList.add("hide");
-            delivery_popup_btns.classList.remove("hide");
-            document.querySelector(".popup_delivery .done").classList.add("hide");
-            location.reload()
-        },3000)
+      setTimeout(() => {
+        delivery_popup.classList.add("hide");
+        delivery_popup_btns.classList.remove("hide");
+        document.querySelector(".popup_delivery .done").classList.add("hide");
+        location.reload()
+      }, 3000)
     } else if (data['status'] == 'wrong') {
       alert(data['msg']);
     }
@@ -837,34 +851,34 @@ function single_product_delivery(item_id, order_number) {
 
 async function multi_product_delivery(order_num) {
   if (selected_items.length > 0) {
-      items_to_remove = [];
-      for (let cartItemId of selected_items) {
-          if (!verified_items.includes(cartItemId)) {
-              alert('يرجي التحقق من الأرقام الخاصة بالمنتجات')
-              return;
-          }
-          
+    items_to_remove = [];
+    for (let cartItemId of selected_items) {
+      if (!verified_items.includes(cartItemId)) {
+        alert('يرجي التحقق من الأرقام الخاصة بالمنتجات')
+        return;
       }
 
-      for (let cartItemId of selected_items) {
-        let cartitem = $('#' + cartItemId);
-        let item_id = cartitem.attr('data-item-id')
-        items_to_remove.push(cartItemId)
+    }
 
-        await single_product_delivery(item_id, order_num)
-      }
+    for (let cartItemId of selected_items) {
+      let cartitem = $('#' + cartItemId);
+      let item_id = cartitem.attr('data-item-id')
+      items_to_remove.push(cartItemId)
 
-      $.post(productsBaseUrl + 'delete_selected_cart_items', {'selected': items_to_remove}, () => {})
-  } else {
-      if (!verified_items.includes($(accepted_cart_item).attr('id'))) {
-          alert('يرجي التحقق من رقم المنتج')
-          return;
-      }
-
-      let item_id = $(accepted_cart_item).attr('data-item-id')
-      
       await single_product_delivery(item_id, order_num)
-      $.post(productsBaseUrl + 'delete_selected_cart_items', {'selected': [$(accepted_cart_item).attr('id')]}, () => {})
+    }
+
+    $.post(productsBaseUrl + 'delete_selected_cart_items', { 'selected': items_to_remove }, () => { })
+  } else {
+    if (!verified_items.includes($(accepted_cart_item).attr('id'))) {
+      alert('يرجي التحقق من رقم المنتج')
+      return;
+    }
+
+    let item_id = $(accepted_cart_item).attr('data-item-id')
+
+    await single_product_delivery(item_id, order_num)
+    $.post(productsBaseUrl + 'delete_selected_cart_items', { 'selected': [$(accepted_cart_item).attr('id')] }, () => { })
   }
 }
 
@@ -876,10 +890,10 @@ let is_unified = new URLSearchParams(window.location.search).get('unified');
 
 if (selected_serial) {
   if (is_unified && is_unified == '1') {
-      itemCode.value = selected_serial;
-      newNextBtn_handler();
+    itemCode.value = selected_serial;
+    newNextBtn_handler();
   } else {
-      serialNumber.value = selected_serial;
-      nextBtn_handler();
+    serialNumber.value = selected_serial;
+    nextBtn_handler();
   }
 }
