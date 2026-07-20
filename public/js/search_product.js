@@ -76,11 +76,11 @@ function set_data(data) {
   if (data['shelf'].includes('movedToEmployee')) {
     $('#item_shelf').text('تم تسليمه');
   } else {
-    $('#item_shelf').text(data['shelf'] === 'غير موجود في رف' ? 'not available' : data['shelf']);
+    $('#item_shelf').text(data['shelf'] === 'غير موجود في رف' ? 'Not Available' : data['shelf']);
   }
 
   if (itemShelfCell) {
-    itemShelfCell.classList.toggle('product-cell-unavailable', $('#item_shelf').text() === 'not available');
+    itemShelfCell.classList.toggle('product-cell-unavailable', $('#item_shelf').text() === 'Not Available');
   }
 
   $('#item_code').text(data['code']);
