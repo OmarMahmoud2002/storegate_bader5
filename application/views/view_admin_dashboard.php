@@ -236,7 +236,12 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                                 <?php
                                 $index = ($page - 1) * $itemsPerPage + 1;
                                 foreach ($items as $row):
-                                    $item_description = $row['item_description'];
+                                    // PHP 8.1+ deprecates passing null to string functions.
+                                    // Stock rows may legitimately contain nullable legacy fields,
+                                    // so normalize them once before rendering the row.
+                                    $item_description = isset($row['item_description']) ? (string) $row['item_description'] : '';
+                                    $item_code = isset($row['item_code']) ? (string) $row['item_code'] : '';
+                                    $item_category = isset($row['item_category']) ? (string) $row['item_category'] : '';
                                 ?>
                                     <tr>
                                         <td>
@@ -250,7 +255,7 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                                             $shortName = explode(',', $item_description)[0];
                                             ?>
                                             <?php if ($can_edit_products): ?>
-                                                <a href="<?= base_url().MOD_VALUE.'admin/products/edit' ?>?item_code=<?= urlencode($row['item_code']) ?>" class="text-start w-100 product-link <?= $text_danger ?>">
+                                                <a href="<?= base_url().MOD_VALUE.'admin/products/edit' ?>?item_code=<?= urlencode($item_code) ?>" class="text-start w-100 product-link <?= $text_danger ?>">
                                                     <i class="bi bi-box me-2"></i>
                                                     <?= htmlspecialchars($shortName) ?>
                                                 </a>
@@ -265,13 +270,13 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                                         <td>
                                             <span class="w-100 category-badge text-dark ">
                                                 <i class="bi bi-upc-scan me-1"></i>
-                                                <?= htmlspecialchars($row['item_code']) ?>
+                                                <?= htmlspecialchars($item_code) ?>
                                             </span>
                                         </td>
                                         <td>
                                             <span class="w-100 category-badge text-dark">
                                                 <i class="bi bi-tag-fill me-1"></i>
-                                                <?= htmlspecialchars($row['item_category']) ?>
+                                                <?= htmlspecialchars($item_category) ?>
                                             </span>
                                         </td>
                                         <td>

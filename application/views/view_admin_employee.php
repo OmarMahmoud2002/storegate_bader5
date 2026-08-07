@@ -66,18 +66,31 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
                 foreach (array_reverse($custody_devices) as $custody_device) {
                   $i++;
                   $item = $this->Store->get_store_item(['item_code' => $custody_device['item_code']]);
-                  $custody_device['barcode'] = $custody_device['barcode'] != null ? $custody_device['barcode'] : 'باركود غير محدد';
+                  $serial_number = isset($custody_device['serial_number']) ? trim((string) $custody_device['serial_number']) : '';
+                  $barcode = isset($custody_device['barcode']) ? trim((string) $custody_device['barcode']) : '';
+
+                  if (!$item && ($serial_number !== '' || $barcode !== '')) {
+                    $item = $this->Store->get_serial_history_by_number($serial_number !== '' ? $serial_number : $barcode);
+                  }
+
+                  $item_code = isset($custody_device['item_code']) ? trim((string) $custody_device['item_code']) : '';
+                  $item_description = ($item && !empty($item['item_description']))
+                    ? (string) $item['item_description']
+                    : ($item_code !== '' ? $item_code : 'منتج غير متوفر');
+                  $display_identifier = $serial_number !== ''
+                    ? $serial_number
+                    : ($barcode !== '' ? $barcode : 'باركود غير محدد');
                   ?>
                   
                   <div class="d" id = '<?=$custody_device['id']?>'>
-                    <span title="<?= safe_data($item['item_description']) ?>">
+                    <span title="<?= safe_data($item_description) ?>">
                         <?php 
-                        echo shortenString(safe_data($item['item_description']), 50);;
+                        echo shortenString(safe_data($item_description), 50);
                         ?>
                     </span>
 
                     
-                    <span><?php echo safe_data($item['serial_control'] == 'yes' ? $custody_device['serial_number'] : $custody_device['barcode']); ?></span>
+                    <span><?php echo safe_data($display_identifier); ?></span>
                     <span><?php echo safe_data(date_format(date_create($custody_device['date_created']), 'd-m-Y h:i:s A')); ?></span>
                     <button class = 'del-btn'>إرجاع</button>
                   </div>
@@ -91,17 +104,30 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
               foreach ($custody_cards as $custody_card) {
                 $i++;
                 $item = $this->Store->get_store_item(['item_code' => $custody_card['item_code']]);
-                $custody_card['barcode'] = $custody_card['barcode'] != null ? $custody_card['barcode'] : 'باركود غير محدد';
+                $serial_number = isset($custody_card['serial_number']) ? trim((string) $custody_card['serial_number']) : '';
+                $barcode = isset($custody_card['barcode']) ? trim((string) $custody_card['barcode']) : '';
+
+                if (!$item && ($serial_number !== '' || $barcode !== '')) {
+                  $item = $this->Store->get_serial_history_by_number($serial_number !== '' ? $serial_number : $barcode);
+                }
+
+                $item_code = isset($custody_card['item_code']) ? trim((string) $custody_card['item_code']) : '';
+                $item_description = ($item && !empty($item['item_description']))
+                  ? (string) $item['item_description']
+                  : ($item_code !== '' ? $item_code : 'منتج غير متوفر');
+                $display_identifier = $serial_number !== ''
+                  ? $serial_number
+                  : ($barcode !== '' ? $barcode : 'باركود غير محدد');
               ?>
               <div class="d" id = '<?=$custody_card['id']?>'>
-                <span title="<?= safe_data($item['item_description']) ?>">
+                <span title="<?= safe_data($item_description) ?>">
                     <?php 
-                    echo shortenString(safe_data($item['item_description']), 50);;
+                    echo shortenString(safe_data($item_description), 50);
                     ?>
                 </span>
 
                 
-                <span><?php echo safe_data($item['serial_control'] == 'yes' ? $custody_card['serial_number'] : $custody_card['barcode']); ?></span>
+                <span><?php echo safe_data($display_identifier); ?></span>
                 <span><?php echo safe_data(date_format(date_create($custody_card['date_created']), 'd-m-Y h:i:s A')); ?></span>
                 <button class = 'del-btn'>إرجاع</button>
               </div>
@@ -300,6 +326,36 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
                 <label>الرقم التوظيفي</label>
                 <input type="text" name="job_number" value="<?php echo safe_data($employee['job_number']); ?>">
               </div>
+              <?php if ($can_edit_employee): ?>
+              <div class="inpt">
+                <label>الرقم السري</label>
+                <div class="password-field password-field--masked">
+                  <input type="text" class="password-field__input" value="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" disabled readonly>
+                  <button type="button" class="password-field__btn password-toggle-edit" data-target="employeePasswordEditPanel">
+                    <i class="bi bi-pencil-square"></i>
+                    <span>تعديل كلمة السر</span>
+                  </button>
+                </div>
+                <div class="password-edit-panel" id="employeePasswordEditPanel" hidden>
+                  <div class="inpt">
+                    <label>كلمة السر القديمة</label>
+                    <input type="text" name="current_user_password" class="password-edit-current" placeholder="كلمة السر القديمة" autocomplete="off">
+                  </div>
+                  <div class="inpt">
+                    <label>كلمة السر الجديدة</label>
+                    <div class="password-field">
+                      <input type="text" name="new_user_password" class="password-field__input password-edit-new" placeholder="كلمة السر الجديدة" autocomplete="new-password">
+                      <button type="button" class="password-field__btn password-field__generate" title="توليد كلمة سر قوية"><i class="bi bi-arrow-repeat"></i></button>
+                      <button type="button" class="password-field__btn password-field__copy" title="نسخ كلمة السر"><i class="bi bi-clipboard"></i></button>
+                    </div>
+                  </div>
+                  <div class="inpt">
+                    <label>تأكيد كلمة السر الجديدة</label>
+                    <input type="text" name="confirm_user_password" class="password-edit-confirm" placeholder="تأكيد كلمة السر الجديدة" autocomplete="new-password">
+                  </div>
+                </div>
+              </div>
+              <?php endif; ?>
               <?php if ($can_edit_employee): ?>
                 <button class="btn" name="empinfoform">تعديل</button>
               <?php endif; ?>
@@ -719,6 +775,7 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 
   <script src="<?php echo base_url(); ?>public/js/script.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
+<script src="<?php echo base_url(); ?>public/js/password-field.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 <script src="<?php echo base_url(); ?>public/js/employees.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 
 

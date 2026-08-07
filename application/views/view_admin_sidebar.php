@@ -27,6 +27,7 @@ $can_forms_settlement = $CI->get_permission_enabled('forms.settlement.view');
 $can_forms_replacement = $CI->get_permission_enabled('forms.replacement.view');
 $can_permissions = $CI->get_permission_enabled('roles.view');
 $can_settings = $CI->get_permission_enabled('settings.view');
+$can_stocktaking = $CI->get_permission_enabled('stocktaking.view');
 ?>
 <script>
   var adminUiPath = window.location.pathname;
@@ -255,12 +256,14 @@ $can_settings = $CI->get_permission_enabled('settings.view');
           </a>
         </li>
         <?php endif; ?>
+        <?php if ($can_stocktaking) : ?>
         <li class="sidebar-list-item">
           <a href="<?php echo base_url().MOD_VALUE.'admin/stocktaking'; ?>">
             <i class="bi bi-clipboard-data"></i>
             <span>جرد المخزون</span>
           </a>
         </li>
+        <?php endif; ?>
         <?php if ($can_forms && ($can_forms_settlement || $can_forms_replacement)) : ?>
         <li class="sidebar-list-item has-submenu <?php if($segment_2 == 'forms') {echo 'active submenu-open';} ?>">
           <a href="<?php echo base_url().MOD_VALUE.'admin/forms?form=settlement'; ?>" class="sidebar-submenu-toggle">

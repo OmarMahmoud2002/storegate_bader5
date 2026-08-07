@@ -41,3 +41,37 @@ $('.del-btn').click(function() {
         location.reload()
     })
 })
+
+// فلترة سيريالات المنتج حسب Subinventory Code مع تحديث العدد الظاهر.
+const serialInventoryFilters = Array.from(document.querySelectorAll('.serial-inventory-filter'));
+const serialInventoryItems = Array.from(document.querySelectorAll('.serials-grid .serial-item'));
+const visibleSerialCount = document.getElementById('visibleSerialCount');
+const serialFilterEmpty = document.getElementById('serialFilterEmpty');
+
+serialInventoryFilters.forEach(function (filterButton) {
+    filterButton.addEventListener('click', function () {
+        const selectedCode = filterButton.dataset.serialFilter || 'all';
+        let visibleCount = 0;
+
+        serialInventoryFilters.forEach(function (button) {
+            const isActive = button === filterButton;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+
+        serialInventoryItems.forEach(function (serialItem) {
+            const isVisible = selectedCode === 'all' || serialItem.dataset.subinventory === selectedCode;
+            serialItem.classList.toggle('is-filtered-out', !isVisible);
+            if (isVisible) {
+                visibleCount++;
+            }
+        });
+
+        if (visibleSerialCount) {
+            visibleSerialCount.textContent = visibleCount;
+        }
+        if (serialFilterEmpty) {
+            serialFilterEmpty.hidden = visibleCount !== 0;
+        }
+    });
+});

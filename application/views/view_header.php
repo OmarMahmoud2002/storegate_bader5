@@ -14,7 +14,8 @@ $is_admin_shell = ($header_CI->uri->segment(1) === 'admin');
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      
+    <title><?php echo htmlspecialchars(!empty($page_title) ? $page_title : 'نظام المخزون', ENT_QUOTES, 'UTF-8'); ?></title>
+
     <meta name="description" content="">
     <meta name="keywords" content="">
     
@@ -41,6 +42,7 @@ $is_admin_shell = ($header_CI->uri->segment(1) === 'admin');
     <link rel="stylesheet" href="<?php echo base_url(); ?>public/css/main.css?a=<?php $date=date_create();echo date_timestamp_get($date);?>">
     <link rel="stylesheet" href="<?php echo base_url(); ?>public/css/login.css?a=<?php $date=date_create();echo date_timestamp_get($date);?>">
     <link rel="stylesheet" href="<?php echo base_url(); ?>public/css/search_product.css?a=<?php $date=date_create();echo date_timestamp_get($date);?>">
+    <link rel="stylesheet" href="<?php echo base_url(); ?>public/css/password-field.css?a=<?php $date=date_create();echo date_timestamp_get($date);?>">
     <?php if ($is_admin_shell) { ?>
     <link rel="stylesheet" href="<?php echo base_url(); ?>public/css/admin-ui-pattern.css?a=<?php $date=date_create();echo date_timestamp_get($date);?>">
     <?php } ?>

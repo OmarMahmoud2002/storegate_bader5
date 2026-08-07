@@ -37,4 +37,20 @@ class Model_settings extends CI_Model {
             ['field' => $field]
         );
     }
+
+    public function set_field($field, $value) {
+        $exists = $this->db
+            ->where('field', $field)
+            ->count_all_results($this->table) > 0;
+
+        if ($exists) {
+            $this->update_field($field, $value);
+            return;
+        }
+
+        $this->db->insert($this->table, [
+            'field' => $field,
+            'value' => $value,
+        ]);
+    }
 }

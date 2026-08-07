@@ -1,12 +1,13 @@
 <?php
 // application/controllers/Upload.php
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
 class Upload extends CI_Controller {
 
     public function __construct() {
         parent::__construct();
         $this->load->helper(array('form', 'url'));
         $this->load->library('upload');
-        $this->load->library('excel'); // PHPExcel or PhpSpreadsheet
     }
 
    
@@ -26,9 +27,8 @@ class Upload extends CI_Controller {
             $file_path = $data['full_path'];
 
             // Load Excel data
-            $this->load->library('excel');
-            $objPHPExcel = PHPExcel_IOFactory::load($file_path);
-            $sheet = $objPHPExcel->getActiveSheet();
+            $spreadsheet = IOFactory::load($file_path);
+            $sheet = $spreadsheet->getActiveSheet();
             $excel_data = $sheet->toArray(null, true, true, true);
 
             // Get database fields
@@ -47,9 +47,8 @@ class Upload extends CI_Controller {
         $field_map = $this->input->post('field_map');
 
         // Load Excel data
-        $this->load->library('excel');
-        $objPHPExcel = PHPExcel_IOFactory::load($file_path);
-        $sheet = $objPHPExcel->getActiveSheet();
+        $spreadsheet = IOFactory::load($file_path);
+        $sheet = $spreadsheet->getActiveSheet();
         $data = $sheet->toArray(null, true, true, true);
 
         // Process data based on field mapping

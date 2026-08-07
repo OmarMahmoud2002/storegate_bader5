@@ -1,6 +1,14 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Exception as SpreadsheetException;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
 class Other extends MY_Controller {
 
 	function __construct()
@@ -25,10 +33,19 @@ class Other extends MY_Controller {
 		$this->load->model('Model_permissions', 'Permissions');
 		$this->load->helper('cupload');
 		$this->load->helper('employees_sales');
-		$this->load->library('excel');
         notifications($this);
         date_default_timezone_set('Asia/Riyadh');
     }
+
+	private function getCellByZeroBasedColumn($sheet, $columnIndex, $row)
+	{
+		return $sheet->getCell(Coordinate::stringFromColumnIndex($columnIndex + 1) . $row);
+	}
+
+	private function columnLetterFromZeroBasedIndex($columnIndex)
+	{
+		return Coordinate::stringFromColumnIndex($columnIndex + 1);
+	}
 	
 	
 	public function index()
@@ -331,6 +348,13 @@ class Other extends MY_Controller {
 						],
 					],
 					[
+						'label' => 'جرد المخزون',
+						'route' => 'admin/stocktaking',
+						'permissions' => [
+							['key' => 'stocktaking.view', 'label' => 'عرض الجرد', 'type' => 'view'],
+						],
+					],
+					[
 						'label' => 'النماذج',
 						'route' => 'admin/forms',
 						'permissions' => [
@@ -355,16 +379,16 @@ class Other extends MY_Controller {
 
 
 	function getSubColumnLettersByGroupLabel($filePath, $groupLabel, $topRow = 1, $subRow = 2) {
-		$objPHPExcel = PHPExcel_IOFactory::load($filePath);
-		$sheet = $objPHPExcel->getActiveSheet();
+		$spreadsheet = IOFactory::load($filePath);
+		$sheet = $spreadsheet->getActiveSheet();
 
 		$highestColumn = $sheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+		$highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
 
 		// Step 1: Find the center column of the group label
 		$centerCol = null;
 		for ($col = 0; $col < $highestColumnIndex; $col++) {
-			$topValue = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
+			$topValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
 			if ($topValue === $groupLabel) {
 				$centerCol = $col;
 				break;
@@ -384,18 +408,18 @@ class Other extends MY_Controller {
 				continue;
 			}
 
-			$topValue = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
-			$subValue = trim($sheet->getCellByColumnAndRow($col, $subRow)->getValue());
+			$topValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
+			$subValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $subRow)->getValue());
 
 			if ($topValue === '' && $subValue !== '') {
-				$matchedColumns[] = PHPExcel_Cell::stringFromColumnIndex($col);
+				$matchedColumns[] = $this->columnLetterFromZeroBasedIndex($col);
 			}
 		}
 
 		// Step 3: Include center column if it has a sub-label
-		$subCenter = trim($sheet->getCellByColumnAndRow($centerCol, $subRow)->getValue());
+		$subCenter = trim($this->getCellByZeroBasedColumn($sheet, $centerCol, $subRow)->getValue());
 		if ($subCenter !== '') {
-			$matchedColumns[] = PHPExcel_Cell::stringFromColumnIndex($centerCol);
+			$matchedColumns[] = $this->columnLetterFromZeroBasedIndex($centerCol);
 		}
 
 		// Step 4: Expand right (up to 2 columns)
@@ -405,11 +429,11 @@ class Other extends MY_Controller {
 				break;
 			}
 
-			$topValue = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
-			$subValue = trim($sheet->getCellByColumnAndRow($col, $subRow)->getValue());
+			$topValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
+			$subValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $subRow)->getValue());
 
 			if ($topValue === '' && $subValue !== '') {
-				$matchedColumns[] = PHPExcel_Cell::stringFromColumnIndex($col);
+				$matchedColumns[] = $this->columnLetterFromZeroBasedIndex($col);
 			}
 		}
 
@@ -721,6 +745,17 @@ class Other extends MY_Controller {
 		$this->load->view('view_admin_lock_track',$this->data);
 	}
 
+	function stocktaking()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+		    redirect(base_url());
+		}
+
+		$this->check_permission('stocktaking.view');
+
+		$this->load->view('view_admin_stocktaking', $this->data);
+	}
+
 	  function employees()
 	{
 		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
@@ -813,26 +848,60 @@ class Other extends MY_Controller {
 	public function handle_employees_sales_upload()
     {
 		$original_filename = $_FILES['userfile']['name'];
-        $uploadStatus = do_upload($this, 'userfile', $original_filename, './public/employees_sales/', 'xls|xlsx', 10 * 1024 * 1024);
+
+		// اسم تخزين فريد لكل رفعة (تاريخ+وقت+عشوائي+الاسم الأصلي مُطهَّرًا) بدل استخدام الاسم
+		// الأصلي كما هو: يمنع استبدال ملف تاريخي مرفوع سابقًا عند تطابق اسم الملف (overwrite=TRUE
+		// في do_upload). الاسم الأصلي يبقى محفوظًا كما هو في عمود filename بقاعدة البيانات.
+		$extension = pathinfo($original_filename, PATHINFO_EXTENSION);
+		$safeBase = preg_replace('/[^A-Za-z0-9_\-]/', '_', pathinfo($original_filename, PATHINFO_FILENAME));
+		$storageFilename = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '_' . $safeBase . '.' . $extension;
+
+        $uploadStatus = do_upload($this, 'userfile', $storageFilename, './public/employees_sales/', 'xls|xlsx', 10 * 1024 * 1024);
 
 		if ($uploadStatus['status'] == 'wrong') {
 			$this->session->set_flashdata('upload_error', 'خطأ في رفع الملف: ' . $uploadStatus['description']);
 			redirect(base_url('admin/employees_sales_upload'));
 		} else {
+			$filepath = './public/employees_sales/' . $uploadStatus['data']['file_name'];
+
+			// تحقق من بنية الملف (أعمدة الهوية الإلزامية) قبل تفعيله كـ"الملف الحالي"
+			// يستخدم load_employees_sales_workbook() (يقرأ شيت "staff sales" فقط متى أمكن
+			// بدل الملف كاملًا - انظر تقرير تحليل الأداء) بدل IOFactory::load() المباشر
+			try {
+				$loaded = load_employees_sales_workbook($filepath);
+				$spreadsheet = $loaded['spreadsheet'];
+				$sheet = $loaded['sheet'];
+				$validation = validate_employees_sales_workbook($sheet);
+				$spreadsheet->disconnectWorksheets();
+				unset($spreadsheet);
+			} catch (\Exception $e) {
+				log_message('error', '[handle_employees_sales_upload] ' . $e->getMessage());
+				$validation = ['valid' => false, 'errors' => ['تعذّر قراءة الملف كملف Excel صالح: ' . $e->getMessage()], 'warnings' => []];
+			}
+
+			if (!$validation['valid']) {
+				@unlink($filepath);
+				$this->session->set_flashdata('upload_error', 'الملف غير متوافق مع بنية مبيعات الموظفين ولم يتم تفعيله: ' . implode('، ', $validation['errors']));
+				redirect(base_url('admin/employees_sales_upload'));
+			}
+
 			 // حفظ التواريخ في الـ session
 			$individualsDate = $this->input->post('individuals_date');
 			$businessDate = $this->input->post('business_date');
-			
+
 			if ($individualsDate) {
 				$this->session->set_userdata('individuals_date', $individualsDate);
 			}
 			if ($businessDate) {
 				$this->session->set_userdata('business_date', $businessDate);
 			}
-			
-			$filepath = './public/employees_sales/' . $uploadStatus['data']['file_name'];
 
-			$this->session->set_flashdata('upload_success', 'تم رفع الملف بنجاح: ' . htmlspecialchars($original_filename));
+			$successMessage = 'تم رفع الملف بنجاح: ' . htmlspecialchars($original_filename);
+			if (!empty($validation['warnings'])) {
+				$successMessage .= ' (تنبيه: ' . implode('، ', $validation['warnings']) . ')';
+			}
+
+			$this->session->set_flashdata('upload_success', $successMessage);
 			$this->Variables->setdata('uploaded_file_path', $filepath);
 			$this->Variables->setdata('uploaded_file_name', $original_filename);
 			$this->EmployeesSales->insert_upload_record($filepath, $original_filename, $individualsDate, $businessDate);
@@ -845,288 +914,15 @@ class Other extends MY_Controller {
 
     }
 
-	private function getGroupsBySubLabelTriggers($filePathOrSheet, $topRow = 1, $subRow = 2) {
-		// Accept either a file path or a sheet object to avoid redundant file loads
-		if (is_string($filePathOrSheet)) {
-			$objPHPExcel = PHPExcel_IOFactory::load($filePathOrSheet);
-			$sheet = $objPHPExcel->getActiveSheet();
-		} else {
-			$sheet = $filePathOrSheet;
-		}
-
-		$highestColumn = $sheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
-
-		$groups = array();
-		$currentGroupLabel = '';
-		$currentGroup = array();
-
-
-		for ($col = 0; $col < $highestColumnIndex; $col++) {
-			$subLabel = trim($sheet->getCellByColumnAndRow($col, $subRow)->getValue());
-
-			if ($currentGroupLabel == '') {
-				$currentGroupLabel = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
-			}
-			
-
-			// If we hit a new TGT, start a new group
-			if ($subLabel === 'TGT') {
-				if (!empty($currentGroup) && $currentGroupLabel !== '') {
-					$groups[$currentGroupLabel] = $currentGroup;
-				}
-				$currentGroupLabel = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
-				$currentGroup = array(); // start fresh
-			}
-
-			// If it's a desired label and not already in the group, add it
-			if ($subLabel !== '') {
-				$currentGroup[$subLabel] = PHPExcel_Cell::stringFromColumnIndex($col);
-			}
-			
-		}
-
-		// Add the final group if it has content
-		if (!empty($currentGroup)) {
-			$groups[$currentGroupLabel] = $currentGroup;
-		}
-
-		return $groups;
-	}
-
-	private function generate_fields_map($data) {
-		$fieldsMap = [];
-		foreach ($data as $top => $subs) {
-			$fieldsMap[formatColName($top)] = $top;	
-		}
-		return [$fieldsMap, array_flip($fieldsMap)];
-	}
-
-	private function generateTables($data) {
-		$fieldsMap = $this->generate_fields_map($data)[0];
-
-		$table1 = [];
-		$table2 = [];
-
-		foreach ($data as $top => $subs) {
-			$subs_length = count($subs);
-			if ($subs_length == 5){
-				$table1[$fieldsMap[formatColName($top)]] = [
-					'label' => $top,
-					'tgt' => $subs['TGT'],
-					'branch_sales' => $subs['Branch sales'],
-					'digital_sales' => $subs['Digital Sales'],
-					'total' => $subs['Total'],
-					'percentage' => $subs['%']
-				];
-			} else if ($subs_length == 3) {
-				$table2[$fieldsMap[formatColName($top)]] = [
-					'label' => $top,
-					'tgt' => $subs['TGT'],
-					'sales' => $subs['Sales'],
-					'percentage' => $subs['%']
-				];
-			}
-		}
-
-		return [$table1, $table2];
-	}
-
-	
-
-	private function getUserSales($sheet, $itemDetails, $row, $tableType, &$sales) {
-		
-		$tgt = getNumericValue(getCellValue($sheet, $itemDetails['tgt'], $row));
-
-		if ($tableType == 1) {
-			$branchSales = getNumericValue(getCellValue($sheet, $itemDetails['branch_sales'], $row));
-			$digitalSales = getNumericValue(getCellValue($sheet, $itemDetails['digital_sales'], $row));
-			$branchSales = is_numeric($branchSales) ? (float)$branchSales : 0;
-			$digitalSales = is_numeric($digitalSales) ? (float)$digitalSales : 0;
-
-			$total = $branchSales + $digitalSales;
-			
-			$calculatedPercentage = 0;
-			if ($tgt > 0) {
-				$calculatedPercentage = round(($total / $tgt) * 100, 0);
-			} elseif ($total > 0) {
-				$calculatedPercentage = 100;
-			}
-
-			$percentage_available = isset($sales['percentage']);
-
-			$sales['branch_sales'] = $branchSales + (isset($sales['branch_sales']) ? $sales['branch_sales'] : 0);
-			$sales['digital_sales'] = $digitalSales + (isset($sales['digital_sales']) ? $sales['digital_sales'] : 0);
-			$sales['total'] = $total + (isset($sales['total']) ? $sales['total'] : 0);
-		
-		} else if ($tableType == 2) {
-			$salesV = getNumericValue(getCellValue($sheet, $itemDetails['sales'], $row));
-			
-			// الحصول على النسبة المئوية المحسوبة مباشرة من الخلية
-			$percentageCell = $sheet->getCell($itemDetails['percentage'] . $row);
-			$percentageValue = $percentageCell->isFormula() ? 
-				$percentageCell->getCalculatedValue() : 
-				$percentageCell->getValue();
-			
-			$calculatedPercentage = $tgt > 0 ? round(($salesV / $tgt) * 100, 0) : 0;
-			
-			// استخدام القيمة المحسوبة من Excel إذا كانت متوفرة
-			if (is_numeric($percentageValue)) {
-				$percentageValue = round($percentageValue * 100, 0);
-			} else {
-				$percentageValue = $calculatedPercentage;
-			}
-
-			
-			if ($tgt == 0 && $salesV > 0) $percentageValue = 100;
-			if ($tgt == 0 && $salesV == 0) $percentageValue = 0;
-
-			$sales['sales'] = $salesV + (isset($sales['sales']) ? $sales['sales'] : 0);
-		}
-		
-
-		$sales['tgt'] = $tgt + (isset($sales['tgt']) ? $sales['tgt'] : 0);
-
-	}
-
-	private function getSalesAgentSales($sheet, $itemDetails, $row, $emp_id, $emp_position, $tableType) {
-		$sales = [];
-
-		# there is only one option and it is his sales
-		
-		$this->getUserSales($sheet, $itemDetails, $row, $tableType, $sales);
-
-		return $sales;
-
-	}
-
-	private function getBranchSupervisorSales($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType) {
-		$sales = [];
-		// get sales agents sales only
-		$highestRow = $sheet->getHighestDataRow();
-		$firstDataRow = 2;
-
-		for ($row = $firstDataRow; $row <= $highestRow; $row++) {
-			if ($option == 1 || $option == 2) {
-				if (getCellValue($sheet, 'B', $row) == $emp_id) {
-					$this->getUserSales($sheet, $itemDetails, $row, $tableType, $sales);	
-				}
-			}
-
-			if ($option == 2 || $option == 3) {
-				if (getCellValue($sheet, 'A', $row) == $emp_id) {
-					$this->getUserSales($sheet, $itemDetails, $row, $tableType, $sales);
-				}
-			}
-			
-		}
-
-		return $sales;
-	}
-
-	private function get_direct_down_position($sheet, $emp_id) {
-		$highestRow = $sheet->getHighestDataRow();
-		$firstDataRow = 2;
-
-		$DirectDown = [];
-		for ($row = $firstDataRow; $row <= $highestRow; $row++) {
-			if (getCellValue($sheet, 'B', $row) == $emp_id) {
-				$DirectDown[] = [
-					'id' => getCellValue($sheet, 'A', $row),
-					'row' => $row,
-					'position' => getCellValue($sheet, 'E', $row)
-				];
-			}
-		}
-
-		return $DirectDown;
-	}
-
-	private function getBranchManagerSales($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType) {
-		$sales = [];
-		// get sales agents sales only
-		$highestRow = $sheet->getHighestDataRow();
-		$firstDataRow = 2;
-
-		for ($row = $firstDataRow; $row <= $highestRow; $row++) {
-			if ($option == 1 || $option == 2) {
-				if (getCellValue($sheet, 'B', $row) == $emp_id) {
-					if ($option == 2) {
-						$this->getUserSales($sheet, $itemDetails, $row, $tableType, $sales);
-					}
-
-					$salesAgents = $this->get_direct_down_position($sheet, getCellValue($sheet, 'A', $row));
-					
-					foreach ($salesAgents as $salesAgent) {
-						$this->getUserSales($sheet, $itemDetails, $salesAgent['row'], $tableType, $sales);	
-					}
-				}
-			}
-
-			if ($option == 3) {
-				if (getCellValue($sheet, 'A', $row) == $emp_id) {
-					$this->getUserSales($sheet, $itemDetails, $row, $tableType, $sales);
-				}
-			}
-			
-		}
-
-		return $sales;
-	}
-
-	private function getAreaManagerSales($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType, $row) {
-		$sales = [];
-
-		if ($option == 3) {
-			$this->getUserSales($sheet, $itemDetails, $row, $tableType, $sales);
-			return $sales;
-		}
-
-		$directDownEmployees = $this->get_direct_down_position($sheet, getCellValue($sheet, 'A', $row));
-		$secondLevelEmployees = [];
-		$thirdLevelEmployees = [];
-		
-
-		foreach ($directDownEmployees as $directDownEmployee) {
-			if ($option == 2) {
-				$this->getUserSales($sheet, $itemDetails, $directDownEmployee['row'], $tableType, $sales);
-			}
-
-			$secondLevelEmployees = array_merge($secondLevelEmployees, $this->get_direct_down_position($sheet, $directDownEmployee['id']));
-		}
-
-		foreach ($secondLevelEmployees as $secondLevelEmployee) {
-			if ($option == 2 || $secondLevelEmployee['position'] == 'Sales Agent') {
-				$this->getUserSales($sheet, $itemDetails, $secondLevelEmployee['row'], $tableType, $sales);
-			}
-
-			$thirdLevelEmployees = array_merge($thirdLevelEmployees, $this->get_direct_down_position($sheet, $secondLevelEmployee['id']));
-		}
-
-		if ($option == 2 || $option == 1) {
-			foreach ($thirdLevelEmployees as $thirdLevelEmployee) {
-				$this->getUserSales($sheet, $itemDetails, $thirdLevelEmployee['row'], $tableType, $sales);
-			}
-		}
-		
-
-		return $sales;
-	}
-
-	
-
-	private function getSalesByOption($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType, $row) {
-		
-		if ($emp_position == "Sales Agent") {
-			return $this->getSalesAgentSales($sheet, $itemDetails, $row, $emp_id, $emp_position, $tableType);
-		} else if ($emp_position == "Branch Supervisor") {
-			return $this->getBranchSupervisorSales($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType);
-		} else if ($emp_position == 'Branch Manager') {
-			return $this->getBranchManagerSales($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType);
-		} else if ($emp_position == 'Area Manager') {
-			return $this->getAreaManagerSales($sheet, $itemDetails, $option, $emp_id, $emp_position, $tableType, $row);
-		}
-	}
+	// getGroupsBySubLabelTriggers(), generate_fields_map(), generateTables(), getUserSales(),
+	// getSalesAgentSales(), getBranchSupervisorSales(), get_direct_down_position(),
+	// getBranchManagerSales(), getAreaManagerSales() and getSalesByOption() moved to
+	// application/helpers/employees_sales_helper.php as the employees_sales_* free
+	// functions (see load_employees_sales_data()): they now operate on an in-memory
+	// dataset/index built once per request instead of re-scanning the whole worksheet
+	// for every KPI group and every hierarchy level - see
+	// EMPLOYEES_SALES_PERFORMANCE_ANALYSIS.md and
+	// EMPLOYEES_SALES_PERFORMANCE_IMPLEMENTATION_REPORT.md.
 
 	public function process_employee_sales_search()
     {
@@ -1180,35 +976,40 @@ class Other extends MY_Controller {
 		$option = 1;
 
         try {
-            $spreadsheet = PHPExcel_IOFactory::load($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
-		
-            
-            // أعمدة البحث الأساسية
-            $empIdCol = 'A';         // EMP ID
-            $empNationalIdCol = 'C';  // EMP National ID
-            $empNameCol = 'D';        // EMP Name
-            $cbuUserCol = 'G';        // CBU User
+            // يحمّل شيت "staff sales" فقط متى أمكن (بدل الملف كاملًا)، ويبني خريطة الأعمدة
+            // وتصنيف مجموعات الـKPI وفهرس الموظفين (emp_id/supervisor_id) مرة واحدة، من ملف
+            // كاش على القرص إن وُجد ومطابق لنفس الملف الفعلي، وإلا يبنيها الآن ويخزّنها للطلب
+            // التالي (انظر تقرير تحليل الأداء وتقرير تنفيذه)
+            $data = load_employees_sales_data($filePath);
+            $headerMap = $data['headerMap'];
+            $table1Items = $data['table1Items'];
+            $table2Items = $data['table2Items'];
+            $dataset = $data['dataset'];
+
+            // أعمدة البحث الأساسية (قيم افتراضية احتياطية تطابق البنية القديمة لو تعذّر الاكتشاف)
+            $empIdCol = isset($headerMap['emp_id']) ? $headerMap['emp_id'] : 'A';
+            $empNationalIdCol = isset($headerMap['national_id']) ? $headerMap['national_id'] : 'C';
+            $empNameCol = isset($headerMap['name']) ? $headerMap['name'] : 'D';
+            $cbuUserCol = isset($headerMap['cbu_user']) ? $headerMap['cbu_user'] : 'G';
+            $supervisorIdCol = isset($headerMap['supervisor_id']) ? $headerMap['supervisor_id'] : 'B';
+            $positionCol = isset($headerMap['position']) ? $headerMap['position'] : 'E';
+            $positionUnitedCol = isset($headerMap['position_united']) ? $headerMap['position_united'] : 'F';
+            $ebuUserCol = isset($headerMap['ebu_user']) ? $headerMap['ebu_user'] : 'H';
+            $regionCol = isset($headerMap['region']) ? $headerMap['region'] : 'I';
+            $areaCol = isset($headerMap['area']) ? $headerMap['area'] : 'J';
+            $branchNameCol = isset($headerMap['branch_name']) ? $headerMap['branch_name'] : 'K';
+            $branchCodeCol = isset($headerMap['branch_code']) ? $headerMap['branch_code'] : 'L';
+            $noteCol = isset($headerMap['note']) ? $headerMap['note'] : 'M';
+            $vacationDaysCol = isset($headerMap['vacation_days']) ? $headerMap['vacation_days'] : 'N';
+            $discountCol = isset($headerMap['discount_percentage']) ? $headerMap['discount_percentage'] : 'O';
 
             $found = false;
             $employeeData = null;
-            
-            $highestRow = $sheet->getHighestDataRow();
-            $firstDataRow = 2; // نفترض أن البيانات تبدأ من الصف الثاني بعد العناوين
-
-			$AllData = $this->getGroupsBySubLabelTriggers($sheet);
-			$tables = $this->generateTables($AllData);
-
-
-			$table1Items = $tables[0];
-			$table2Items = $tables[1];
-
-
-            for ($row = $firstDataRow; $row <= $highestRow; $row++) {
-                $currentEmpId = trim((string)$sheet->getCell($empIdCol . $row)->getValue());
-                $currentNationalId = trim((string)$sheet->getCell($empNationalIdCol . $row)->getValue());
-                $currentName = trim((string)$sheet->getCell($empNameCol . $row)->getValue());
-                $currentCbuUser = trim((string)$sheet->getCell($cbuUserCol . $row)->getValue());
+            foreach ($dataset['rows'] as $row => $rowData) {
+                $currentEmpId = trim((string)($rowData[$empIdCol] ?? ''));
+                $currentNationalId = trim((string)($rowData[$empNationalIdCol] ?? ''));
+                $currentName = trim((string)($rowData[$empNameCol] ?? ''));
+                $currentCbuUser = trim((string)($rowData[$cbuUserCol] ?? ''));
 
 
                 if (strcasecmp($currentNationalId, $searchTerm) == 0 ||
@@ -1222,18 +1023,18 @@ class Other extends MY_Controller {
                             'name' => $currentName,
                             'national_id' => $currentNationalId,
                             'cbu_user' => $currentCbuUser,
-                            'emp_id' => (string) $sheet->getCell('A' . $row)->getValue(),
-                            'supervisor_id' => (string) $sheet->getCell('B' . $row)->getValue(),
-                            'position' => (string) $sheet->getCell('E' . $row)->getValue(),
-                            'position_united' => (string) $sheet->getCell('F' . $row)->getValue(),
-                            'ebu_user' => (string) $sheet->getCell('H' . $row)->getValue(),
-                            'region' => (string) $sheet->getCell('I' . $row)->getValue(),
-                            'area' => (string) $sheet->getCell('J' . $row)->getValue(),
-                            'branch_name' => (string) $sheet->getCell('K' . $row)->getValue(),
-                            'branch_code' => (string) $sheet->getCell('L' . $row)->getValue(),
-                            'note' => (string) $sheet->getCell('M' . $row)->getValue(),
-                            'vacation_days' => (string) $sheet->getCell('N' . $row)->getValue(),
-                            'discount_percentage' => (string) $sheet->getCell('O' . $row)->getValue()
+                            'emp_id' => (string) ($rowData[$empIdCol] ?? ''),
+                            'supervisor_id' => (string) ($rowData[$supervisorIdCol] ?? ''),
+                            'position' => (string) ($rowData[$positionCol] ?? ''),
+                            'position_united' => (string) ($rowData[$positionUnitedCol] ?? ''),
+                            'ebu_user' => (string) ($rowData[$ebuUserCol] ?? ''),
+                            'region' => (string) ($rowData[$regionCol] ?? ''),
+                            'area' => (string) ($rowData[$areaCol] ?? ''),
+                            'branch_name' => (string) ($rowData[$branchNameCol] ?? ''),
+                            'branch_code' => (string) ($rowData[$branchCodeCol] ?? ''),
+                            'note' => (string) ($rowData[$noteCol] ?? ''),
+                            'vacation_days' => (string) ($rowData[$vacationDaysCol] ?? ''),
+                            'discount_percentage' => (string) ($rowData[$discountCol] ?? '')
                         ],
                         'table1' => [],
                         'table2' => []
@@ -1255,7 +1056,7 @@ class Other extends MY_Controller {
 						}
                         
 						
-						$sales = $this->getSalesByOption($sheet, $itemDetails, intval($calculation_method), $employeeData['employee_info']['emp_id'], $employeeData['employee_info']['position'], 1, $row);
+						$sales = employees_sales_get_sales_by_option($dataset, $itemDetails, intval($calculation_method), $employeeData['employee_info']['emp_id'], $employeeData['employee_info']['position'], 1, $row);
 						
 						// calculate percentage
 						$percentage = 0;
@@ -1291,7 +1092,7 @@ class Other extends MY_Controller {
 							continue;
 						}
 
-						$sales = $this->getSalesByOption($sheet, $itemDetails, intval($calculation_method), $employeeData['employee_info']['emp_id'], $employeeData['employee_info']['position'], 2, $row);
+						$sales = employees_sales_get_sales_by_option($dataset, $itemDetails, intval($calculation_method), $employeeData['employee_info']['emp_id'], $employeeData['employee_info']['position'], 2, $row);
 
 						// calculate percentage
 						$percentage = 0;
@@ -1410,11 +1211,14 @@ class Other extends MY_Controller {
         }
 
         try {
-            $spreadsheet = PHPExcel_IOFactory::load($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
+            // نفس مصدر البيانات المستخدم في البحث (شيت "staff sales" فقط + فهرس الموظفين +
+            // تصنيف مجموعات الـKPI)، من الكاش إن وُجد ومطابق لنفس الملف، وإلا يُبنى الآن
+            $data = load_employees_sales_data($filePath);
+            $tables = [$data['table1Items'], $data['table2Items']];
+            $dataset = $data['dataset'];
 
             // الحصول على معلومات المدير
-            $managerInfo = findEmployeeByIdInSheet($sheet, $empId);
+            $managerInfo = $dataset['byId'][$empId] ?? null;
 
             if (!$managerInfo) {
                 echo json_encode([
@@ -1424,12 +1228,15 @@ class Other extends MY_Controller {
                 return;
             }
 
-			$AllData = $this->getGroupsBySubLabelTriggers($sheet);
-			$tables = $this->generateTables($AllData);
-			$fieldsMap = $this->generate_fields_map($AllData)[1];
+			// يطابق منطق generate_fields_map()[1] الأصلي تمامًا (خريطة مقلوبة: التسمية
+			// الأصلية => formatColName الخاص بها)، دون الحاجة لتخزين مجموعات الـKPI الخام
+			$fieldsMap = [];
+			foreach (array_merge(array_keys($data['table1Items']), array_keys($data['table2Items'])) as $topLabel) {
+				$fieldsMap[$topLabel] = formatColName($topLabel);
+			}
 
             // الحصول على جميع الموظفين التابعين في الهيكل
-            $subordinates = $this->findAllSubordinatesRecursive($sheet, $empId, $fieldKey, $tableType, $tables, $managerInfo['position'], $option);
+            $subordinates = employees_sales_find_all_subordinates_recursive($dataset, $empId, $fieldKey, $tableType, $tables, $managerInfo['position'], $option);
 
             // ترتيب حسب نسبة الإنجاز (من الأقل للأعلى)
             usort($subordinates, function($a, $b) {
@@ -1471,169 +1278,12 @@ class Other extends MY_Controller {
 
 	
 
-    /**
-     * البحث عن جميع الموظفين التابعين بشكل تكراري (recursive)
-     */
-    private function findAllSubordinatesRecursive($sheet, $managerId, $fieldKey, $tableType, $tables, $CurrentPosition, $option)
-    {
-        $allSubordinates = [];
-        $highestRow = $sheet->getHighestDataRow();
-        $firstDataRow = 2;
-
-		$grades = ['Area Manager', 'Branch Manager', 'Branch Supervisor', 'Sales Agent'];
-		
-		$empData = findEmployeeByIdInSheet($sheet, $managerId);
-
-		if (($option == 3) || ($option == 2 && $empData['position'] == $grades[2] && $CurrentPosition == $empData['position'])) {
-			$fieldData = $this->extractFieldData($sheet, $empData['row'], $fieldKey, $tableType, $tables);
-
-			$subordinateData = [
-				'name' => $empData['name'],
-				'position' => $empData['position'],
-				'emp_id' => $managerId
-			];
-
-			// دمج بيانات الحقل
-			$subordinateData = array_merge($subordinateData, $fieldData);
-
-			$allSubordinates[] = $subordinateData;
-		}
-
-		if ($option == 3) {
-			return $allSubordinates;
-		}
-
-        // البحث عن الموظفين المباشرين
-        for ($row = $firstDataRow; $row <= $highestRow; $row++) {
-            $supervisorId = trim((string)$sheet->getCell('B' . $row)->getValue());
-			
-
-            // إذا كان Supervisor ID يساوي Manager ID
-            if ($supervisorId === $managerId) {
-				
-                $empId = trim((string)$sheet->getCell('A' . $row)->getValue());
-                $name = trim((string)$sheet->getCell('D' . $row)->getValue());
-                $position = trim((string)$sheet->getCell('E' . $row)->getValue());
-
-                // استخراج بيانات الحقل المطلوب
-				$fieldData = $this->extractFieldData($sheet, $row, $fieldKey, $tableType, $tables);
-
-				
-				if ($option == 2 && $position != $CurrentPosition) {
-					if ($fieldData) {
-						$subordinateData = [
-							'name' => $name,
-							'position' => $position,
-							'emp_id' => $empId
-						];
-
-
-						// دمج بيانات الحقل
-						$subordinateData = array_merge($subordinateData, $fieldData);
-
-						$allSubordinates[] = $subordinateData;
-					}
-				}
-
-				if ($option == 1 && $position == $grades[3]) {
-
-					if ($fieldData) {
-						$subordinateData = [
-							'name' => $name,
-							'position' => $position,
-							'emp_id' => $empId
-						];
-						$allSubordinates[] = array_merge($subordinateData, $fieldData);
-					}
-				}
-                
-
-                // البحث عن موظفين تابعين لهذا الموظف (recursive)
-                $subSubordinates = $this->findAllSubordinatesRecursive($sheet, $empId, $fieldKey, $tableType, $tables, $CurrentPosition, $option);
-                $allSubordinates = array_merge($allSubordinates, $subSubordinates);
-            }
-        }
-
-        return $allSubordinates;
-    }
-
-    /**
-     * استخراج بيانات الحقل المطلوب من الصف
-     */
-    private function extractFieldData($sheet, $row, $fieldKey, $tableType, $tables)
-    {
-        if ($tableType === 'table1') {
-            return $this->extractTable1FieldData($sheet, $row, $fieldKey, $tables[0]);
-        } else {
-            return $this->extractTable2FieldData($sheet, $row, $fieldKey, $tables[1]);
-        }
-    }
-
-	private function extractTable1FieldData($sheet, $row, $fieldKey, $tableItems)
-    {
-
-        if (!isset($tableItems[$fieldKey])) {
-            return null;
-        }
-
-        $itemDetails = $tableItems[$fieldKey];
-
-        $tgt = getNumericValue(getCellValue($sheet, $itemDetails['tgt'], $row));
-        $branchSales = getNumericValue(getCellValue($sheet, $itemDetails['branch_sales'], $row));
-        $digitalSales = getNumericValue(getCellValue($sheet, $itemDetails['digital_sales'], $row));
-
-        $total = $branchSales + $digitalSales;
-        $remaining = $tgt - $total;
-
-        $percentage = 0;
-        if ($tgt > 0) {
-            $percentage = round(($total / $tgt) * 100, 0);
-        } elseif ($total > 0) {
-            $percentage = 100;
-        }
-
-        return [
-            'tgt' => $tgt,
-            'branch_sales' => $branchSales,
-            'digital_sales' => $digitalSales,
-            'total' => $total,
-            'remaining' => $remaining,
-            'percentage' => $percentage . '%'
-        ];
-    }
-
-    /**
-     * استخراج بيانات من الجدول الثاني (بدون مبيعات رقمية)
-     */
-    private function extractTable2FieldData($sheet, $row, $fieldKey, $tableItems)
-    {
-
-
-        if (!isset($tableItems[$fieldKey])) {
-            return null;
-        }
-
-        $itemDetails = $tableItems[$fieldKey];
-
-        $tgt = getNumericValue(getCellValue($sheet, $itemDetails['tgt'], $row));
-        $sales = getNumericValue(getCellValue($sheet, $itemDetails['sales'], $row));
-
-        $remaining = $tgt - $sales;
-
-        $percentage = 0;
-        if ($tgt > 0) {
-            $percentage = round(($sales / $tgt) * 100, 0);
-        } elseif ($sales > 0) {
-            $percentage = 100;
-        }
-
-        return [
-            'tgt' => $tgt,
-            'sales' => $sales,
-            'remaining' => $remaining,
-            'percentage' => $percentage . '%'
-        ];
-    }
+	// findAllSubordinatesRecursive(), extractFieldData(), extractTable1FieldData() and
+	// extractTable2FieldData() moved to application/helpers/employees_sales_helper.php
+	// as employees_sales_find_all_subordinates_recursive() and
+	// employees_sales_extract_*_field_data(): they now walk the dataset's bySupervisor
+	// index instead of re-scanning the whole worksheet at every recursion level - see
+	// EMPLOYEES_SALES_PERFORMANCE_ANALYSIS.md section 5.2.
 
 	function employees_sales_details() {
 		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
@@ -1656,9 +1306,9 @@ class Other extends MY_Controller {
 			redirect(base_url('admin/employees_sales_search'));
 		}
 
-		// Create new PHPExcel object
-		$objPHPExcel = new PHPExcel();
-		$sheet = $objPHPExcel->getActiveSheet();
+		// Create new spreadsheet object
+		$spreadsheet = new Spreadsheet();
+		$sheet = $spreadsheet->getActiveSheet();
 		
 		// Set RTL direction
 		$sheet->setRightToLeft(true);
@@ -1668,7 +1318,7 @@ class Other extends MY_Controller {
 		$sheet->setCellValue('A1', 'تقرير أداء الموظف');
 		$sheet->getStyle('A1')->applyFromArray(array(
 			'font' => array('bold' => true, 'size' => 16),
-			'alignment' => array('horizontal' => PHPExcel_Style_Alignment::HORIZONTAL_CENTER)
+			'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER)
 		));
 		
 		// Employee info section title
@@ -1676,7 +1326,7 @@ class Other extends MY_Controller {
 		$sheet->mergeCells('A3:O3');
 		$sheet->getStyle('A3')->applyFromArray(array(
 			'font' => array('bold' => true),
-			'alignment' => array('horizontal' => PHPExcel_Style_Alignment::HORIZONTAL_CENTER)
+			'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER)
 		));
 
 		// Employee info headers
@@ -1710,12 +1360,12 @@ class Other extends MY_Controller {
 		// Format employee info cells
 		$sheet->getStyle('A4:O5')->applyFromArray(array(
 			'borders' => array(
-				'allborders' => array('style' => PHPExcel_Style_Border::BORDER_THIN)
+				'allBorders' => array('style' => Border::BORDER_THIN)
 			)
 		));
 		$sheet->getStyle('A4:O4')->applyFromArray(array(
 			'fill' => array(
-				'type' => PHPExcel_Style_Fill::FILL_SOLID,
+				'fillType' => Fill::FILL_SOLID,
 				'color' => array('rgb' => 'E2EFDA')
 			),
 			'font' => array('bold' => true)
@@ -1729,7 +1379,7 @@ class Other extends MY_Controller {
 			$sheet->setCellValue("A{$currentRow}", '━━━━━━━━━━ جدول المبيعات مع المبيعات الرقمية ━━━━━━━━━━');
 			$sheet->getStyle("A{$currentRow}")->applyFromArray(array(
 				'font' => array('bold' => true),
-				'alignment' => array('horizontal' => PHPExcel_Style_Alignment::HORIZONTAL_CENTER)
+				'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER)
 			));
 			
 			$currentRow++;
@@ -1737,19 +1387,19 @@ class Other extends MY_Controller {
 			// Table 1 headers
 			$table1Headers = array(
 				'📊 المنتج/الخدمة', '🎯 الهدف', '🏬 مبيعات الفرع',
-				'💻 المبيعات الرقمية', '📈 الإجمالي', '⭐ المتبقي', '📊 نسبة الإنجاز'
+				'💻 Promo Code', '📈 الإجمالي', '⭐ المتبقي', '📊 نسبة الإنجاز'
 			);
 			$sheet->fromArray($table1Headers, NULL, "A{$currentRow}");
 			
 			// Format headers
 			$sheet->getStyle("A{$currentRow}:G{$currentRow}")->applyFromArray(array(
 				'fill' => array(
-					'type' => PHPExcel_Style_Fill::FILL_SOLID,
+					'fillType' => Fill::FILL_SOLID,
 					'color' => array('rgb' => 'BDD7EE')
 				),
 				'font' => array('bold' => true),
 				'borders' => array(
-					'allborders' => array('style' => PHPExcel_Style_Border::BORDER_THIN)
+					'allBorders' => array('style' => Border::BORDER_THIN)
 				)
 			));
 			
@@ -1778,7 +1428,7 @@ class Other extends MY_Controller {
 				
 				$sheet->getStyle("A{$currentRow}:G{$currentRow}")->applyFromArray(array(
 					'borders' => array(
-						'allborders' => array('style' => PHPExcel_Style_Border::BORDER_THIN)
+						'allBorders' => array('style' => Border::BORDER_THIN)
 					)
 				));
 				
@@ -1798,7 +1448,7 @@ class Other extends MY_Controller {
 			$sheet->setCellValue("A{$currentRow}", '━━━━━━━━━━ جدول المبيعات بدون مبيعات رقمية ━━━━━━━━━━');
 			$sheet->getStyle("A{$currentRow}")->applyFromArray(array(
 				'font' => array('bold' => true),
-				'alignment' => array('horizontal' => PHPExcel_Style_Alignment::HORIZONTAL_CENTER)
+				'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER)
 			));
 			
 			$currentRow++;
@@ -1811,12 +1461,12 @@ class Other extends MY_Controller {
 			
 			$sheet->getStyle("A{$currentRow}:E{$currentRow}")->applyFromArray(array(
 				'fill' => array(
-					'type' => PHPExcel_Style_Fill::FILL_SOLID,
+					'fillType' => Fill::FILL_SOLID,
 					'color' => array('rgb' => 'BDD7EE')
 				),
 				'font' => array('bold' => true),
 				'borders' => array(
-					'allborders' => array('style' => PHPExcel_Style_Border::BORDER_THIN)
+					'allBorders' => array('style' => Border::BORDER_THIN)
 				)
 			));
 			
@@ -1842,7 +1492,7 @@ class Other extends MY_Controller {
 				
 				$sheet->getStyle("A{$currentRow}:E{$currentRow}")->applyFromArray(array(
 					'borders' => array(
-						'allborders' => array('style' => PHPExcel_Style_Border::BORDER_THIN)
+						'allBorders' => array('style' => Border::BORDER_THIN)
 					)
 				));
 				
@@ -1865,7 +1515,7 @@ class Other extends MY_Controller {
 		$sheet->setCellValue("A{$currentRow}", '━━━━━━━━━━ نهاية التقرير ━━━━━━━━━━');
 		$sheet->getStyle("A{$currentRow}")->applyFromArray(array(
 			'font' => array('bold' => true),
-			'alignment' => array('horizontal' => PHPExcel_Style_Alignment::HORIZONTAL_CENTER)
+			'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER)
 		));
 
 		// Set filename
@@ -1879,7 +1529,7 @@ class Other extends MY_Controller {
 		header('Cache-Control: max-age=0');
 
 		// Save and output file
-		$objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel2007');
+		$objWriter = IOFactory::createWriter($spreadsheet, 'Xlsx');
 		$objWriter->save('php://output');
 		exit;
 	}
@@ -2224,14 +1874,39 @@ class Other extends MY_Controller {
 			$user_name        = $this->input->post('user_name', true);
 			$user_email    = $this->input->post('user_email', true);
             $job_number = $this->input->post('job_number', true);
-			
-		    		    
+			$current_user_password = $this->input->post('current_user_password', true);
+			$new_user_password = $this->input->post('new_user_password', true);
+			$confirm_user_password = $this->input->post('confirm_user_password', true);
+
 		    	$form_data = array(
 		    	    'user_fillname'     => secure_data($user_fillname),
 		    	    'user_name'        => secure_data($user_name),
 					'user_email'            => secure_data($user_email),
 					'job_number' => secure_data($job_number),
 	            );
+
+	            $wants_password_change = !empty($current_user_password) || !empty($new_user_password) || !empty($confirm_user_password);
+
+	            if ($wants_password_change) {
+	            	if (empty($current_user_password) || empty($new_user_password) || empty($confirm_user_password)) {
+	            		$this->session->set_flashdata('error', 'يجب إدخال كلمة السر القديمة والجديدة وتأكيدها');
+	            		redirect($this->agent->referrer());
+	            	}
+
+	            	if ($new_user_password !== $confirm_user_password) {
+	            		$this->session->set_flashdata('error', 'كلمة السر الجديدة وتأكيدها غير متطابقين');
+	            		redirect($this->agent->referrer());
+	            	}
+
+	            	$employee = $this->Model_admin->get_user_by_id($user_id);
+	            	if (empty($employee) || md5($current_user_password) !== $employee['user_password']) {
+	            		$this->session->set_flashdata('error', 'كلمة السر القديمة غير صحيحة');
+	            		redirect($this->agent->referrer());
+	            	}
+
+	            	$form_data['user_password'] = secure_data(md5($new_user_password));
+	            }
+
 	            $this->Model_admin->edit_employee($user_id,$form_data);
 
 

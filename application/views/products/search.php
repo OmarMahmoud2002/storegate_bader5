@@ -11,11 +11,29 @@ $can_add_custody = $CI->get_permission_enabled('product_search.custody.create');
 $can_add_delivery = $CI->get_permission_enabled('product_search.delivery.create');
 $can_return_custody = $CI->get_permission_enabled('product_search.custody.return');
 $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.return');
+
+$stock_upload_time = !empty($stock_excel_last_uploaded_at) ? strtotime($stock_excel_last_uploaded_at) : false;
+$stock_upload_age_seconds = $stock_upload_time !== false ? max(0, time() - $stock_upload_time) : 0;
+$stock_upload_age_hours = (int) floor($stock_upload_age_seconds / 3600);
+$stock_upload_age_minutes = (int) floor(($stock_upload_age_seconds % 3600) / 60);
+$stock_upload_is_stale = $stock_upload_time !== false && $stock_upload_age_seconds > (12 * 60 * 60);
+
+if ($stock_upload_time !== false) {
+  if ($stock_upload_age_hours === 0) {
+    $stock_upload_age_text = $stock_upload_age_minutes === 0
+      ? 'منذ أقل من دقيقة'
+      : 'منذ ' . $stock_upload_age_minutes . ' دقيقة';
+  } else {
+    $stock_upload_age_text = 'منذ ' . $stock_upload_age_hours . ' ساعة';
+    if ($stock_upload_age_minutes > 0) {
+      $stock_upload_age_text .= ' و' . $stock_upload_age_minutes . ' دقيقة';
+    }
+  }
+}
 ?>
 
 <style>
-  .serialAdd,
-  .newserialAdd {
+  .serialAdd {
     margin-right: 15px;
     margin-bottom: 3px;
     color: black;
@@ -24,8 +42,7 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
     cursor: pointer;
   }
 
-  .serialAdd:hover,
-  .newserialAdd:hover {
+  .serialAdd:hover {
     background-color: rgba(230, 230, 230, 0.5);
   }
 
@@ -68,6 +85,157 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
     color: #157347 !important;
     font-weight: 800;
   }
+
+  .stock-upload-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 10px;
+    color: #667085;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.7;
+  }
+
+  .stock-upload-status.is-stale {
+    color: #dc2626;
+  }
+
+  .stock-upload-status i {
+    font-size: 16px;
+  }
+
+  .stock-available-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 72px;
+    padding: 7px 13px;
+    border: 1px solid rgba(102, 126, 234, 0.24);
+    border-radius: 12px;
+    background: rgba(102, 126, 234, 0.09);
+    color: #4f46b8;
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .stock-available-button:hover,
+  .stock-available-button:focus-visible {
+    background: var(--admin-ui-gradient);
+    color: #fff;
+    outline: none;
+    box-shadow: 0 10px 22px rgba(102, 126, 234, 0.24);
+  }
+
+  .stock-breakdown-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(21, 30, 50, 0.48);
+    backdrop-filter: blur(4px);
+  }
+
+  .stock-breakdown-popup.hide {
+    display: none;
+  }
+
+  .stock-breakdown-card {
+    width: min(480px, 100%);
+    overflow: hidden;
+    border: 1px solid rgba(102, 126, 234, 0.16);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 28px 70px rgba(31, 42, 68, 0.22);
+  }
+
+  .stock-breakdown-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 22px;
+    background: linear-gradient(135deg, #f4f6ff 0%, #f8f4ff 100%);
+    border-bottom: 1px solid #e8eaf3;
+  }
+
+  .stock-breakdown-title {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .stock-breakdown-title i {
+    color: #6b55c8;
+    font-size: 23px;
+  }
+
+  .stock-breakdown-title h2 {
+    margin: 0;
+    color: #23314d;
+    font-size: 20px;
+    font-weight: 900;
+  }
+
+  .stock-breakdown-close {
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 11px;
+    background: #fff;
+    color: #667085;
+    cursor: pointer;
+  }
+
+  .stock-breakdown-body {
+    padding: 22px;
+  }
+
+  .stock-breakdown-list {
+    display: grid;
+    gap: 11px;
+  }
+
+  .stock-breakdown-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid #e6e9f2;
+    border-radius: 13px;
+    background: #f8f9fc;
+  }
+
+  .stock-breakdown-row span {
+    color: #344054;
+    font-weight: 800;
+  }
+
+  .stock-breakdown-row strong {
+    min-width: 42px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--admin-ui-gradient);
+    color: #fff;
+    text-align: center;
+  }
+
+  .stock-breakdown-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed #d0d5dd;
+    color: #1d2939;
+    font-weight: 900;
+  }
 </style>
 
 <div class='app-content admin-ui-page admin-ui-product-search'>
@@ -79,7 +247,24 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
       <div class="search-card-intro">
         <span class="search-card-icon" aria-hidden="true"><i class="bi bi-upc-scan"></i></span>
         <h1>مطابقة رقم التحقق</h1>
-        <p>يرجى إدخال الرقم التسلسلي أو رقم الصنف للتحقق من عملية المطابقة.</p>
+        <p>يرجى إدخال الرقم التسلسلي أو رقم الصنف أو الباركود للتحقق من عملية المطابقة.</p>
+        <?php if ($stock_upload_time !== false): ?>
+          <div class="stock-upload-status<?= $stock_upload_is_stale ? ' is-stale' : '' ?>" title="التوقيت حسب المملكة العربية السعودية">
+            <i class="bi bi-clock-history" aria-hidden="true"></i>
+            <span>
+              آخر رفع لملف المخزون:
+              <?= date('d/m/Y', $stock_upload_time) ?>
+              <?= date('h:i', $stock_upload_time) ?>
+              <?= date('A', $stock_upload_time) === 'AM' ? 'ص' : 'م' ?>
+              (<?= $stock_upload_age_text ?>)
+            </span>
+          </div>
+        <?php else: ?>
+          <div class="stock-upload-status">
+            <i class="bi bi-clock-history" aria-hidden="true"></i>
+            <span>لم يتم تسجيل وقت رفع ملف المخزون بعد</span>
+          </div>
+        <?php endif; ?>
       </div>
       <div class='top_part'>
         <button type='button' id='startOverBtn'>البدء من جديد</button>
@@ -171,22 +356,18 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
           </div>
         </div>
       </div>
-      <ul class="list">
-        <li class="active" data-elm=".conts">البحث رقم السريال</li>
-        <li data-elm=".conts2">البحث رقم الصنف</li>
-      </ul>
       <div class="ff conts">
         <div class="inpts">
           <div class="inpt" id="serialNumber">
             <div style='display: flex; align-items: center; gap: 10px;'>
-              <input type="text" id="serialNumberInput" placeholder="أدخل رقم السريال">
+              <input type="text" id="serialNumberInput" placeholder="أدخل رقم السريال أو رقم الصنف أو الباركود">
 
               <?php if ($can_add_to_cart): ?>
                 <i class="fa fa-plus serialAdd hide" onclick="register_item_to_cart()"></i>
               <?php endif; ?>
             </div>
 
-            <p id="serialNumberError" class="hide">الحد الأدنى للبحث 6 أرقام</p>
+            <p id="serialNumberError" class="hide">يرجى إدخال رقم السريال أو رقم الصنف أو الباركود</p>
             <p id="serialNumberHistory" class='hide'><a>اضغط هنا للمزيد من التفاصيل</a></p>
           </div>
           <div class="select_type hide">
@@ -203,29 +384,6 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
           <button type="button" id="checkBtn" class="hide">تحقق</button>
           <?php if ($can_add_custody || $can_add_delivery): ?>
             <button type="button" id="deliveryBtn" class="hide">تسليم الجهاز</button>
-          <?php endif; ?>
-        </div>
-      </div>
-      <div class="ff conts2 hide">
-        <div class="inpts">
-          <div class="inpt" id="itemCode">
-            <div style='display: flex; align-items: center; gap: 10px;'>
-              <input type="text" id="itemCodeInput" placeholder="ادخل الصنف"><br>
-              <i class="fa fa-plus newserialAdd hide" onclick="register_item_to_cart()"></i>
-            </div>
-
-            <p id="itemCodeError" class="hide">الحد الأدنى للبحث 6 </p>
-          </div>
-          <div class="inpt hide" id="newVerification">
-            <input type="text" id="newVerificationInput" placeholder="تحقق من رقم الباركود"><br>
-          </div>
-        </div>
-        <div class="newCheckResult"></div>
-        <div class="btns">
-          <button type="button" id="newNextBtn">التالي</button>
-          <button type="button" id="newCheckBtn" class="hide">تحقق</button>
-          <?php if ($can_add_custody || $can_add_delivery): ?>
-            <button type="button" id="newDeliveryBtn" class="hide">تسليم الجهاز</button>
           <?php endif; ?>
         </div>
       </div>
@@ -264,7 +422,12 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
               </tr>
               <tr>
                 <td>المتوفر</td>
-                <td id='total_quantity'></td>
+                <td>
+                  <button type="button" id="total_quantity" class="stock-available-button sort-button" aria-haspopup="dialog" aria-controls="stockBreakdownPopup" title="عرض توزيع المتوفر حسب المخزون">
+                    <span>0</span>
+                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                  </button>
+                </td>
               </tr>
               <tr>
                 <td>رقم الباركود</td>
@@ -276,12 +439,45 @@ $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.retu
               </tr>
             </tbody>
           </table>
-          <a id='product_image' class="product-image-preview" href="" data-fancybox="product-gallery" data-caption>
-            <img src="" alt="صورة المنتج">
-          </a>
+          <div class="product-image-frame">
+            <button type="button" id="productImagePrev" class="product-image-nav product-image-nav-prev hide" aria-label="الصورة السابقة">
+              <i class="bi bi-chevron-right"></i>
+            </button>
+            <a id='product_image' class="product-image-preview" href="" data-fancybox="product-gallery" data-caption>
+              <img src="" alt="صورة المنتج">
+            </a>
+            <button type="button" id="productImageNext" class="product-image-nav product-image-nav-next hide" aria-label="الصورة التالية">
+              <i class="bi bi-chevron-left"></i>
+            </button>
+            <span id="productImageCounter" class="product-image-counter hide"></span>
+          </div>
           <div style='display: none' id='gallery_images'>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="stockBreakdownPopup" class="stock-breakdown-popup hide" role="dialog" aria-modal="true" aria-labelledby="stockBreakdownTitle">
+  <div class="stock-breakdown-card">
+    <div class="stock-breakdown-head">
+      <div class="stock-breakdown-title">
+        <i class="bi bi-boxes" aria-hidden="true"></i>
+        <h2 id="stockBreakdownTitle">توزيع المتوفر حسب المخزون</h2>
+      </div>
+      <button type="button" class="stock-breakdown-close" aria-label="إغلاق">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="stock-breakdown-body">
+      <div class="stock-breakdown-list">
+        <div class="stock-breakdown-row"><span>23012</span><strong data-stock-code="23012">0</strong></div>
+        <div class="stock-breakdown-row"><span>SAgent_STK</span><strong data-stock-code="SAgent_STK">0</strong></div>
+        <div class="stock-breakdown-row"><span>RESV_23012</span><strong data-stock-code="RESV_23012">0</strong></div>
+      </div>
+      <div class="stock-breakdown-total">
+        <span>الإجمالي</span>
+        <strong id="stockBreakdownTotal">0</strong>
       </div>
     </div>
   </div>

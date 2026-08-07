@@ -147,6 +147,7 @@ DROP TABLE IF EXISTS `tbl_cart`;
 CREATE TABLE `tbl_cart` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `item_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL DEFAULT 0,
   `serial_control` varchar(10) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM AUTO_INCREMENT=240 DEFAULT CHARSET=latin1;
@@ -377,7 +378,7 @@ CREATE TABLE `tbl_settings` (
 
 LOCK TABLES `tbl_settings` WRITE;
 /*!40000 ALTER TABLE `tbl_settings` DISABLE KEYS */;
-INSERT INTO `tbl_settings` VALUES (1,'Website_name','storegate'),(2,'Website_email',''),(3,'Website_domain','storegate.org'),(4,'Website_backup_email',''),(5,'SMTP_mail_encoding',''),(6,'SMTP_port',''),(7,'SMTP_host',''),(8,'SMTP_username',''),(9,'SMTP_password','');
+INSERT INTO `tbl_settings` VALUES (1,'Website_name','storegate'),(2,'Website_email',''),(3,'Website_domain','storegate.org'),(4,'Website_backup_email',''),(5,'SMTP_mail_encoding',''),(6,'SMTP_port',''),(7,'SMTP_host',''),(8,'SMTP_username',''),(9,'SMTP_password',''),(10,'stock_excel_last_uploaded_at','');
 /*!40000 ALTER TABLE `tbl_settings` ENABLE KEYS */;
 UNLOCK TABLES;
 

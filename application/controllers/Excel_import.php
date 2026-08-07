@@ -1,5 +1,9 @@
 <?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date as SpreadsheetDate;
+
 class Excel_import extends CI_Controller
 {
  public function __construct()
@@ -7,14 +11,18 @@ class Excel_import extends CI_Controller
   parent::__construct();
   $this->load->model('Excel_import_model');
   $this->load->model('Model_admin');
-  $this->load->library('excel');
   
+ }
+
+ private function getCellByZeroBasedColumn($worksheet, $columnIndex, $row)
+ {
+     return $worksheet->getCell(Coordinate::stringFromColumnIndex($columnIndex + 1) . $row);
  }
 
  // Add New Feature
  private function getTrimmedCellValue($worksheet, $columnIndex, $row)
  {
-     $cell = $worksheet->getCellByColumnAndRow($columnIndex, $row);
+     $cell = $this->getCellByZeroBasedColumn($worksheet, $columnIndex, $row);
      $value = $cell->isFormula() ? $cell->getOldCalculatedValue() : $cell->getValue();
 
      if ($value === null) {
@@ -47,7 +55,7 @@ class Excel_import extends CI_Controller
  // Add New Feature
  private function getExcelDateString($worksheet, $columnIndex, $row)
  {
-     $cell = $worksheet->getCellByColumnAndRow($columnIndex, $row);
+     $cell = $this->getCellByZeroBasedColumn($worksheet, $columnIndex, $row);
      $value = $cell->isFormula() ? $cell->getOldCalculatedValue() : $cell->getValue();
 
      if ($value === null) {
@@ -55,7 +63,7 @@ class Excel_import extends CI_Controller
      }
 
      if (is_numeric($value)) {
-         return gmdate('Y-m-d', PHPExcel_Shared_Date::ExcelToPHP($value));
+         return SpreadsheetDate::excelToDateTimeObject($value)->format('Y-m-d');
      }
 
      $formattedValue = trim((string) $value);
@@ -79,7 +87,7 @@ class Excel_import extends CI_Controller
 
  private function getNumericCellValue($worksheet, $columnIndex, $row)
  {
-     $cell = $worksheet->getCellByColumnAndRow($columnIndex, $row);
+     $cell = $this->getCellByZeroBasedColumn($worksheet, $columnIndex, $row);
      $value = $cell->isFormula() ? $cell->getOldCalculatedValue() : $cell->getValue();
 
      if ($value === null) {
@@ -155,12 +163,7 @@ function import()
 
         if ($valid == 1) {
             $path = $_FILES["file"]["tmp_name"];
-            // Add New Feature
-            if (!class_exists('ZipArchive') && class_exists('PHPExcel_Settings')) {
-                PHPExcel_Settings::setZipClass(PHPExcel_Settings::PCLZIP);
-            }
-            // End
-            $object = PHPExcel_IOFactory::load($path);
+            $object = IOFactory::load($path);
             $data = [];
 
             foreach ($object->getWorksheetIterator() as $worksheet) {
@@ -187,7 +190,7 @@ function import()
 
                         $c_user_name = $this->Model_admin->get_user_by_uid($insert_excel_uid);
                         $user_id = isset($c_user_name['user_id']) ? (int) $c_user_name['user_id'] : 0;
-                        $insert_excel_twasel = $worksheet->getCellByColumnAndRow(13, $row)->getValue();
+                        $insert_excel_twasel = $this->getCellByZeroBasedColumn($worksheet, 13, $row)->getValue();
 
                         if ($insert_excel_date !== '' && ($insert_excel_twasel > 0) && $user_id > 0 ) {
                             $data[] = array(
@@ -243,11 +246,7 @@ function import_erp()
         $error = '';
         if ($valid == 1) {
             $path = $_FILES["file"]["tmp_name"];
-            if (!class_exists('ZipArchive') && class_exists('PHPExcel_Settings')) {
-                PHPExcel_Settings::setZipClass(PHPExcel_Settings::PCLZIP);
-            }
-
-            $object = PHPExcel_IOFactory::load($path);
+            $object = IOFactory::load($path);
             $data = array();
 
             foreach ($object->getWorksheetIterator() as $worksheet) {

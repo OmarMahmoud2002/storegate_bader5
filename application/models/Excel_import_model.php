@@ -100,6 +100,66 @@ public function get_employee_sold_devices($user_id) {
 
     return $records;
 }
+
+/**
+ * يجلب سجلات البيع المرفوعة من ملف التقفيلة بالرقم التسلسلي للمنتج
+ * (يبحث بالرقم كما هو و مع/بدون حرف S في البداية).
+ */
+public function get_sales_by_serial($serial) {
+    $serial = strtoupper(trim((string) $serial));
+
+    if ($serial === '') {
+        return array();
+    }
+
+    $serial_without_s = preg_replace('/^S/', '', $serial, 1);
+    $serial_with_s = 'S' . $serial_without_s;
+
+    $this->db->select('insert_excel_id, insert_excel_date, insert_excel_uid, insert_excel_ordern, insert_excel_new_ordern, insert_excel_description, insert_excel_product_serial_number, insert_excel_twasel, insert_excel_electronic, insert_excel_jowy, insert_excel_quickplus');
+    $this->db->from($this->table);
+    $this->db->where(
+        'UPPER(TRIM(insert_excel_product_serial_number)) IN ('
+        . $this->db->escape($serial) . ', '
+        . $this->db->escape($serial_without_s) . ', '
+        . $this->db->escape($serial_with_s) . ')',
+        null,
+        false
+    );
+    $this->db->where(
+        '(CAST(insert_excel_twasel AS DECIMAL(12,2)) > 0'
+        . ' OR CAST(insert_excel_electronic AS DECIMAL(12,2)) > 0'
+        . ' OR CAST(insert_excel_jowy AS DECIMAL(12,2)) > 0'
+        . ' OR CAST(insert_excel_quickplus AS DECIMAL(12,2)) > 0)',
+        null,
+        false
+    );
+    $this->db->order_by('insert_excel_date', 'DESC');
+    $this->db->order_by('insert_excel_id', 'DESC');
+
+    $query = $this->db->get();
+    $records = $query->result_array();
+
+    foreach ($records as $index => $record) {
+        $records[$index]['insert_excel_sales_amount'] = 0;
+        $records[$index]['insert_excel_sales_type'] = '';
+
+        if ((float) $record['insert_excel_twasel'] > 0) {
+            $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_twasel'];
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات تواصل';
+        } else if ((float) $record['insert_excel_electronic'] > 0) {
+            $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_electronic'];
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات إلكترونية';
+        } else if ((float) $record['insert_excel_jowy'] > 0) {
+            $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_jowy'];
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات جوي';
+        } else if ((float) $record['insert_excel_quickplus'] > 0) {
+            $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_quickplus'];
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات كوبيك بلس';
+        }
+    }
+
+    return $records;
+}
 // End
 
 

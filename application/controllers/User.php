@@ -163,8 +163,54 @@ class User extends MY_Controller {
 		if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
 		    redirect(base_url());
 		}
-		
+
 		$this->load->view('view_user_lock', $this->data);
+	}
+
+	function profile()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
+		    redirect(base_url());
+		}
+
+		$this->data['employee'] = $this->Model_admin->get_user_by_id($this->session->userdata('user_id'));
+		$this->load->view('view_user_profile', $this->data);
+	}
+
+	function change_password()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
+		    redirect(base_url());
+		}
+
+		if ($_SERVER['REQUEST_METHOD'] != 'POST') {
+			redirect(base_url().MOD_VALUE.'user/profile');
+		}
+
+		$user_id = $this->session->userdata('user_id');
+		$current_user_password = $this->input->post('current_user_password', true);
+		$new_user_password = $this->input->post('new_user_password', true);
+		$confirm_user_password = $this->input->post('confirm_user_password', true);
+
+		if (empty($current_user_password) || empty($new_user_password) || empty($confirm_user_password)) {
+			$this->session->set_flashdata('error', 'يجب إدخال كلمة السر القديمة والجديدة وتأكيدها');
+			redirect(base_url().MOD_VALUE.'user/profile');
+		}
+
+		if ($new_user_password !== $confirm_user_password) {
+			$this->session->set_flashdata('error', 'كلمة السر الجديدة وتأكيدها غير متطابقين');
+			redirect(base_url().MOD_VALUE.'user/profile');
+		}
+
+		$employee = $this->Model_admin->get_user_by_id($user_id);
+		if (empty($employee) || md5($current_user_password) !== $employee['user_password']) {
+			$this->session->set_flashdata('error', 'كلمة السر القديمة غير صحيحة');
+			redirect(base_url().MOD_VALUE.'user/profile');
+		}
+
+		$this->Model_admin->edit_employee($user_id, ['user_password' => secure_data(md5($new_user_password))]);
+		$this->session->set_flashdata('success', 'تم تغيير كلمة السر بنجاح');
+		redirect(base_url().MOD_VALUE.'user/profile');
 	}
 
 

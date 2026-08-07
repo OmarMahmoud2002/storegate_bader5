@@ -1,6 +1,9 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
 class EmployeeSalesService {
     private $ci;
 
@@ -8,21 +11,29 @@ class EmployeeSalesService {
         $this->ci = &get_instance();
     }
 
+    private function getCellByZeroBasedColumn($sheet, $columnIndex, $row) {
+        return $sheet->getCell(Coordinate::stringFromColumnIndex($columnIndex + 1) . $row);
+    }
+
+    private function columnLetterFromZeroBasedIndex($columnIndex) {
+        return Coordinate::stringFromColumnIndex($columnIndex + 1);
+    }
+
     /**
      * Get sub-column letters by group label (handles merged columns)
      */
     public function getSubColumnLettersByGroupLabel($filePath, $groupLabel, $topRow = 1, $subRow = 2) {
         try {
-            $objPHPExcel = PHPExcel_IOFactory::load($filePath);
-            $sheet = $objPHPExcel->getActiveSheet();
+            $spreadsheet = IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
 
             $highestColumn = $sheet->getHighestColumn();
-            $highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+            $highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
 
             // Find the center column of the merged group label
             $centerCol = null;
             for ($col = 0; $col < $highestColumnIndex; $col++) {
-                $topValue = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
+                $topValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
                 if ($topValue === $groupLabel) {
                     $centerCol = $col;
                     break;
@@ -42,19 +53,19 @@ class EmployeeSalesService {
                     continue;
                 }
 
-                $topValue = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
-                $subValue = trim($sheet->getCellByColumnAndRow($col, $subRow)->getValue());
+                $topValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
+                $subValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $subRow)->getValue());
 
                 // Column is part of merged group if top is empty and sub is not
                 if ($topValue === '' && $subValue !== '') {
-                    $matchedColumns[] = PHPExcel_Cell::stringFromColumnIndex($col);
+                    $matchedColumns[] = $this->columnLetterFromZeroBasedIndex($col);
                 }
             }
 
             // Include center column if it has a sub-label
-            $subCenter = trim($sheet->getCellByColumnAndRow($centerCol, $subRow)->getValue());
+            $subCenter = trim($this->getCellByZeroBasedColumn($sheet, $centerCol, $subRow)->getValue());
             if ($subCenter !== '') {
-                $matchedColumns[] = PHPExcel_Cell::stringFromColumnIndex($centerCol);
+                $matchedColumns[] = $this->columnLetterFromZeroBasedIndex($centerCol);
             }
 
             // Expand right (up to 2 columns)
@@ -64,11 +75,11 @@ class EmployeeSalesService {
                     break;
                 }
 
-                $topValue = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
-                $subValue = trim($sheet->getCellByColumnAndRow($col, $subRow)->getValue());
+                $topValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
+                $subValue = trim($this->getCellByZeroBasedColumn($sheet, $col, $subRow)->getValue());
 
                 if ($topValue === '' && $subValue !== '') {
-                    $matchedColumns[] = PHPExcel_Cell::stringFromColumnIndex($col);
+                    $matchedColumns[] = $this->columnLetterFromZeroBasedIndex($col);
                 }
             }
 
@@ -84,21 +95,21 @@ class EmployeeSalesService {
      */
     public function getGroupsBySubLabelTriggers($filePath, $topRow = 1, $subRow = 2) {
         try {
-            $objPHPExcel = PHPExcel_IOFactory::load($filePath);
-            $sheet = $objPHPExcel->getActiveSheet();
+            $spreadsheet = IOFactory::load($filePath);
+            $sheet = $spreadsheet->getActiveSheet();
 
             $highestColumn = $sheet->getHighestColumn();
-            $highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+            $highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
 
             $groups = array();
             $currentGroupLabel = '';
             $currentGroup = array();
 
             for ($col = 0; $col < $highestColumnIndex; $col++) {
-                $subLabel = trim($sheet->getCellByColumnAndRow($col, $subRow)->getValue());
+                $subLabel = trim($this->getCellByZeroBasedColumn($sheet, $col, $subRow)->getValue());
 
                 if ($currentGroupLabel == '') {
-                    $currentGroupLabel = trim($sheet->getCellByColumnAndRow($col, $topRow)->getValue());
+                    $currentGroupLabel = trim($this->getCellByZeroBasedColumn($sheet, $col, $topRow)->getValue());
                 }
 
                 // If we hit a new TGT trigger, start a new group
@@ -112,7 +123,7 @@ class EmployeeSalesService {
 
                 // If it's a desired label and not already in the group, add it
                 if ($subLabel !== '') {
-                    $currentGroup[$subLabel] = PHPExcel_Cell::stringFromColumnIndex($col);
+                    $currentGroup[$subLabel] = $this->columnLetterFromZeroBasedIndex($col);
                 }
             }
 

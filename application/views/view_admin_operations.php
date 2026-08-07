@@ -35,18 +35,61 @@
             <div class="top-header operations-info-grid">
                 <div class="box-content operations-info-item">
                     <label>رقم الصنف</label>
-                    <span class="iteme"><?=$info['code']?></span>
+                    <span class="iteme"><?=htmlspecialchars((string) ($info['code'] !== '' ? $info['code'] : (!empty($serial) ? 'غير متوفر في البيانات الحالية' : '')))?></span>
                 </div>
                 <div class="box-content operations-info-item">
                     <label>اسم المنتج</label>
-                    <span class="iteme"><?=$info['name']?></span>
+                    <span class="iteme"><?=htmlspecialchars((string) ($info['name'] !== '' ? $info['name'] : (!empty($serial) ? 'غير متوفر في البيانات الحالية' : '')))?></span>
                 </div>
                 <div class="box-content operations-info-item">
                     <label>الرقم التسلسلي</label>
-                    <span class="iteme"><?=strtoupper($serial ? $serial : '')?></span>
+                    <span class="iteme"><?=htmlspecialchars(strtoupper($serial ? $serial : ''))?></span>
                 </div>
+                <?php if (!empty($serial)) { ?>
+                    <div class="box-content operations-info-item">
+                        <label>الحالة</label>
+                        <span class="iteme">
+                            <?php if (!empty($last_sale)) { ?>
+                                <span class="operations-status-badge operations-status-sold">مباع</span>
+                            <?php } else { ?>
+                                <span class="operations-status-badge operations-status-instock">غير مسجل كمباع</span>
+                            <?php } ?>
+                        </span>
+                    </div>
+                <?php } ?>
             </div>
         </section>
+
+        <?php if (!empty($last_sale)) { ?>
+            <section class="sale-details operations-panel operations-sale-panel">
+                <div class="operations-section-heading">
+                    <i class="bi bi-cart-check" aria-hidden="true"></i>
+                    <h2>بيانات البيع </h2>
+                </div>
+                <div class="top-header operations-info-grid">
+                    <div class="box-content operations-info-item">
+                        <label>رقم الطلب</label>
+                        <span class="iteme"><?=htmlspecialchars((string) ($last_sale['order_number'] !== '' ? $last_sale['order_number'] : 'غير محدد'))?></span>
+                    </div>
+                    <div class="box-content operations-info-item">
+                        <label>اسم الموظف</label>
+                        <span class="iteme"><?=htmlspecialchars((string) $last_sale['employee_name'])?></span>
+                    </div>
+                    <div class="box-content operations-info-item">
+                        <label>تاريخ البيع</label>
+                        <?php $last_sale_time = strtotime((string) $last_sale['date']); ?>
+                        <span class="iteme"><?=htmlspecialchars($last_sale_time ? date('d-m-Y', $last_sale_time) : (string) $last_sale['date'])?></span>
+                    </div>
+                    <div class="box-content operations-info-item">
+                        <label>نوع المبيعات</label>
+                        <span class="iteme"><?=htmlspecialchars((string) ($last_sale['sales_type'] !== '' ? $last_sale['sales_type'] : 'غير محدد'))?></span>
+                    </div>
+                </div>
+                <?php if (count($sales) > 1) { ?>
+                    <p class="operations-sale-note">يوجد <?=count($sales)?> سجلات بيع لهذا الرقم التسلسلي، جميعها موضحة في سجل العمليات بالأسفل.</p>
+                <?php } ?>
+            </section>
+        <?php } ?>
 
         <section class="transaction-details operations-panel">
             <div class="operations-section-heading">
@@ -61,36 +104,51 @@
                             <th>طلب المبيعات</th>
                             <th>نوع العملية</th>
                             <th class="operation-movement-heading">العدد</th>
-                            <th>تم الإنشاء بواسطة</th>
+                            <th>تم بواسطة / البائع</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($operations as $operation) {
-                            $operation_text = (string) $operation['operation'];
-                            $movement_value = '';
+                        <?php foreach ($timeline as $entry) {
+                            $movement_value = $entry['movement'];
                             $movement_class = '';
 
-                            if (strpos($operation_text, 'ارجاع') !== false || strpos($operation_text, 'إرجاع') !== false) {
-                                $movement_value = '1';
+                            if ($movement_value === '1') {
                                 $movement_class = 'operation-movement-in';
-                            } elseif (strpos($operation_text, 'تسجيل') !== false || strpos($operation_text, 'تسليم') !== false) {
-                                $movement_value = '-1';
+                            } elseif ($movement_value === '-1') {
                                 $movement_class = 'operation-movement-out';
                             }
+
+                            // سجلات التقفيلة تحتوي على تاريخ فقط بدون وقت
+                            $entry_time = strtotime((string) $entry['date']);
+                            $entry_date_format = $entry['source'] === 'sale' ? 'd-m-Y' : 'd-m-Y h:i:s A';
+                            $entry_date = $entry_time ? date($entry_date_format, $entry_time) : (string) $entry['date'];
+
+                            $operation_label = (string) $entry['operation'];
+                            if ($entry['source'] === 'sale' && $entry['sales_type'] !== '') {
+                                $operation_label .= ' - ' . $entry['sales_type'];
+                            }
+                            if ($entry['source'] === 'sale' && (float) $entry['sales_amount'] > 0) {
+                                $operation_label .= ' - مبلغ البيع: ' . number_format((float) $entry['sales_amount'], 2);
+                            }
+
+                            $sales_order = trim((string) $entry['sales_order']);
+                            if ($entry['source'] === 'sale' && $sales_order === '') {
+                                $sales_order = 'غير محدد';
+                            }
                         ?>
-                            <tr>
-                                <td><?=date_format(date_create($operation['date_created']), 'd-m-Y h:i:s A')?></td>
-                                <td><?=$operation['sales_order']?></td>
-                                <td><?=$operation['operation']?></td>
+                            <tr class="<?=$entry['source'] === 'sale' ? 'operations-row-sale' : ''?>">
+                                <td><?=htmlspecialchars($entry_date)?></td>
+                                <td><?=htmlspecialchars($sales_order)?></td>
+                                <td><?=htmlspecialchars($operation_label)?></td>
                                 <td class="operation-movement-cell">
                                     <?php if ($movement_value !== '') { ?>
                                         <span class="operation-movement-badge <?=$movement_class?>"><?=$movement_value?></span>
                                     <?php } ?>
                                 </td>
-                                <td><?=$this->Model_admin->get_user_by_id($operation['made_by'])['user_fillname']?></td>
+                                <td><?=htmlspecialchars((string) $entry['user_name'])?></td>
                             </tr>
                         <?php } ?>
-                        <?php if (empty($operations)) { ?>
+                        <?php if (empty($timeline)) { ?>
                             <tr class="operations-empty-row">
                                 <td colspan="5">
                                     <i class="bi bi-inbox"></i>

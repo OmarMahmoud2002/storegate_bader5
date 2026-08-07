@@ -177,6 +177,7 @@ $can_delete_admin = $CI->get_permission_enabled('admins.delete');
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 
   <script src="<?php echo base_url(); ?>public/js/script.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
+<script src="<?php echo base_url(); ?>public/js/password-field.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 <script src="<?php echo base_url(); ?>public/js/employees.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 
 

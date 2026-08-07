@@ -106,7 +106,11 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
             </div>
             <div class="inpt">
               <label>الرقم السري </label>
-              <input name="user_password" type="text" placeholder="الرقم السري ">
+              <div class="password-field">
+                <input name="user_password" class="password-field__input" type="text" placeholder="الرقم السري " autocomplete="new-password">
+                <button type="button" class="password-field__btn password-field__generate" title="توليد كلمة سر قوية"><i class="bi bi-arrow-repeat"></i></button>
+                <button type="button" class="password-field__btn password-field__copy" title="نسخ كلمة السر"><i class="bi bi-clipboard"></i></button>
+              </div>
             </div>
            <button type="submit" class="btn btn-primary btn-primary" name="form_registration">إضافة</button>
             <?php echo form_close(); ?>
@@ -124,6 +128,7 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 
   <script src="<?php echo base_url(); ?>public/js/script.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
+<script src="<?php echo base_url(); ?>public/js/password-field.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 <script src="<?php echo base_url(); ?>public/js/employees.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 
 

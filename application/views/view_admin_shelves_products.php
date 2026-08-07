@@ -33,7 +33,7 @@ $can_remove_shelf_products = $CI->get_permission_enabled('shelves.items.remove')
             }
             
             ?>
-            <?php $item_details = $this->Store->get_store_item(['item_code' => $item['item_code'], 'serial_number' => $item['serial_number'], 'barcode' => $item['barcode']]); ?>
+            <?php $item_details = $this->Store->get_store_item_for_shelf_row($item); ?>
             <div class = 'products-row' id = '<?=$item_details['id']?>'>
                 <div class = 'product-cell num'><span class = 'cell-label'>اسم المنتج</span> <?=$item_details['item_description']?></div>
                 <div class = 'product-cell q'><span class = 'cell-label'>نوع التحكم</span><?=$item_details['serial_control'] == 'yes' ? $item['serial_number'] : $item['barcode']?></div>

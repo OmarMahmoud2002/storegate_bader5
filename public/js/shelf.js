@@ -162,7 +162,8 @@ function checkSerialDetails(serial) {
             const details = {
                 exists: !!(response && response.exists),
                 subinventoryCode: response && response.subinventory_code ? response.subinventory_code : '',
-                canonicalSerial: response && response.serial ? String(response.serial) : ''
+                canonicalSerial: response && response.serial ? String(response.serial) : '',
+                posterNumber: response && response.poster_number ? String(response.poster_number).trim() : ''
             }
             shelfSerialCheckCache[serial] = details
             resolve(details)
@@ -170,6 +171,28 @@ function checkSerialDetails(serial) {
             reject(xhr)
         })
     })
+}
+
+function applyKnownPosterToInput(inputEl, posterNumber) {
+    if (!inputEl || !posterNumber) {
+        return false
+    }
+
+    const current = (inputEl.value || '').trim()
+    const wasAutofilled = inputEl.dataset.autofilled === 'true'
+
+    if (current !== '' && !wasAutofilled) {
+        return false
+    }
+
+    if (current === posterNumber) {
+        inputEl.dataset.autofilled = 'true'
+        return false
+    }
+
+    inputEl.value = posterNumber
+    inputEl.dataset.autofilled = 'true'
+    return true
 }
 
 function checkSerialItem(serialItem) {
@@ -205,6 +228,11 @@ function checkSerialItem(serialItem) {
             if (serialInput) {
                 serialInput.value = canonical
             }
+        }
+
+        const posterInput = serialItem.querySelector('input[name="posters[]"]')
+        if (posterInput && details.posterNumber) {
+            applyKnownPosterToInput(posterInput, details.posterNumber)
         }
 
         const hasSubinventoryCode = details.exists && String(details.subinventoryCode || '').trim() !== ''
@@ -426,12 +454,65 @@ function add_serial(serialValue, posterValue, source) {
 
     if (!isScanned) {
         $('#SerialInputAdder').val('')
-        $('#PosterInputAdder').val('')
+        $('#PosterInputAdder').val('').removeAttr('data-autofilled')
     }
 
     element.scrollTop = -element.scrollHeight
     return true
 }
+
+let shelfMainPosterLookupTimer = null
+
+function clearAutofilledPoster(posterInput) {
+    if (!posterInput || posterInput.dataset.autofilled !== 'true') {
+        return
+    }
+
+    posterInput.value = ''
+    delete posterInput.dataset.autofilled
+}
+
+function lookupMainPosterNumber() {
+    const serialInput = document.getElementById('SerialInputAdder')
+    const posterInput = document.getElementById('PosterInputAdder')
+    if (!serialInput || !posterInput) {
+        return
+    }
+
+    const serial = serialInput.value.trim()
+    if (serial.length < 6) {
+        return
+    }
+
+    checkSerialDetails(serial).then((details) => {
+        if (serialInput.value.trim() !== serial) {
+            return
+        }
+
+        if (details.exists && details.posterNumber) {
+            applyKnownPosterToInput(posterInput, details.posterNumber)
+        } else {
+            clearAutofilledPoster(posterInput)
+        }
+    }).catch(() => { })
+}
+
+document.getElementById('SerialInputAdder') && document.getElementById('SerialInputAdder').addEventListener('input', function () {
+    if (shelfMainPosterLookupTimer) {
+        window.clearTimeout(shelfMainPosterLookupTimer)
+    }
+
+    if (this.value.trim() === '') {
+        clearAutofilledPoster(document.getElementById('PosterInputAdder'))
+        return
+    }
+
+    shelfMainPosterLookupTimer = window.setTimeout(lookupMainPosterNumber, 350)
+})
+
+document.getElementById('PosterInputAdder') && document.getElementById('PosterInputAdder').addEventListener('input', function () {
+    delete this.dataset.autofilled
+})
 
 $('#serialAdder').click((event) => {
     add_serial()
@@ -729,7 +810,7 @@ function commitShelfSerial(serial) {
     lastScannedSerial = serial
     lastScannedSerialAt = now
 
-    if (add_serial(serial, 'scan')) {
+    if (add_serial(serial, '', 'scan')) {
         showShelfToast('success', 'تم إضافة السيريال')
         setScannerStatus('تم إضافة السيريال: ' + serial, 'success')
     } else if (getExistingSerial(serial)) {

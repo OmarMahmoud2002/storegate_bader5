@@ -14,6 +14,8 @@ let select_type = document.querySelector(".select_type");
 let radios_enabled = false
 let radios = [];
 let redirected = false;
+// نوع البحث الحالي في الخانة الموحدة: 'serial' أو 'item_code'
+let search_mode = 'serial';
 let checkResultMsgAccepted = '<span style="color:green">تم التحقق و المطابقة<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209L241 337c-9.4 9.4-24.6 9.4-33.9 0l-64-64c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l47 47L335 175c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9z"/></svg></span>';
 let checkResultMsgRejected = '<span style="color:red">لم يتم التحقق<svg  style="fill:red" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM175 175c9.4-9.4 24.6-9.4 33.9 0l47 47 47-47c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9l-47 47 47 47c9.4 9.4 9.4 24.6 0 33.9s-24.6 9.4-33.9 0l-47-47-47 47c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l47-47-47-47c-9.4-9.4-9.4-24.6 0-33.9z"/></svg></span>';
 let product_data = {};
@@ -21,6 +23,14 @@ var selected_items = [];
 let verified_items = []
 let process_type = '';
 let accepted_cart_item;
+let currentProductImages = [];
+let currentImageIndex = 0;
+const productImagePrevBtn = document.getElementById('productImagePrev');
+const productImageNextBtn = document.getElementById('productImageNext');
+const productImageCounter = document.getElementById('productImageCounter');
+const stockAvailableButton = document.getElementById('total_quantity');
+const stockBreakdownPopup = document.getElementById('stockBreakdownPopup');
+const stockBreakdownClose = document.querySelector('.stock-breakdown-close');
 //
 const appBaseUrl = window.appBaseUrl || (window.location.origin + '/')
 const productsBaseUrl = appBaseUrl + 'admin/products/'
@@ -64,6 +74,53 @@ if (productDetailsClose) {
 }
 
 
+function render_current_product_image() {
+  if (!currentProductImages.length) return;
+
+  const image = currentProductImages[currentImageIndex];
+  const imageUrl = appBaseUrl + 'public/img/products/' + image;
+
+  $('#product_image').attr('href', imageUrl);
+  $('#product_image img').attr('src', imageUrl);
+
+  const hasMultiple = currentProductImages.length > 1;
+  $(productImagePrevBtn).toggleClass('hide', !hasMultiple);
+  $(productImageNextBtn).toggleClass('hide', !hasMultiple);
+  $(productImageCounter).toggleClass('hide', !hasMultiple);
+
+  if (hasMultiple) {
+    $(productImageCounter).text((currentImageIndex + 1) + ' / ' + currentProductImages.length);
+  }
+}
+
+function show_prev_product_image() {
+  if (!currentProductImages.length) return;
+  currentImageIndex = (currentImageIndex - 1 + currentProductImages.length) % currentProductImages.length;
+  render_current_product_image();
+}
+
+function show_next_product_image() {
+  if (!currentProductImages.length) return;
+  currentImageIndex = (currentImageIndex + 1) % currentProductImages.length;
+  render_current_product_image();
+}
+
+if (productImagePrevBtn) {
+  productImagePrevBtn.addEventListener('click', function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    show_prev_product_image();
+  });
+}
+
+if (productImageNextBtn) {
+  productImageNextBtn.addEventListener('click', function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    show_next_product_image();
+  });
+}
+
 function set_data(data) {
   var image_path = 'default_product_image.png';
   var product_images = Array.isArray(data['images']) && data['images'].length ? data['images'] : [image_path];
@@ -71,6 +128,7 @@ function set_data(data) {
   const subinventoryCell = document.getElementById('subinventory_code');
 
   $('.product-gallery-extra').remove();
+  $('#gallery_images').empty();
   $('#product_name').text(data['name']);
 
   if (data['shelf'].includes('movedToEmployee')) {
@@ -107,10 +165,23 @@ function set_data(data) {
       subinventoryCell.style.fontWeight = '';
     }
   }
-  $('#total_quantity').text(data['total_quantity']);
-  $('#product_image').attr('href', appBaseUrl + 'public/img/products/' + product_images[0]);
+  const stockBreakdown = data['stock_breakdown'] || {};
+  const totalQuantity = Number(data['total_quantity'] || 0);
+  $('#total_quantity span').text(totalQuantity.toLocaleString('en-US'));
+  document.querySelectorAll('[data-stock-code]').forEach(function (element) {
+    const code = element.dataset.stockCode;
+    const quantity = Number(stockBreakdown[code] || 0);
+    element.textContent = quantity.toLocaleString('en-US');
+  });
+  const stockBreakdownTotal = document.getElementById('stockBreakdownTotal');
+  if (stockBreakdownTotal) {
+    stockBreakdownTotal.textContent = totalQuantity.toLocaleString('en-US');
+  }
   $('#product_image').attr('data-caption', data['name']);
-  $('#product_image img').attr('src', appBaseUrl + 'public/img/products/' + product_images[0]);
+
+  currentProductImages = product_images;
+  currentImageIndex = 0;
+  render_current_product_image();
 
   product_images.slice(1).forEach((image, index) => {
     const galleryLink = document.createElement('a');
@@ -140,11 +211,40 @@ function set_data(data) {
 
 }
 
+function close_stock_breakdown() {
+  if (!stockBreakdownPopup) return;
+  stockBreakdownPopup.classList.add('hide');
+}
+
+if (stockAvailableButton && stockBreakdownPopup) {
+  stockAvailableButton.addEventListener('click', function () {
+    stockBreakdownPopup.classList.remove('hide');
+  });
+
+  stockBreakdownPopup.addEventListener('click', function (event) {
+    if (event.target === stockBreakdownPopup) {
+      close_stock_breakdown();
+    }
+  });
+}
+
+if (stockBreakdownClose) {
+  stockBreakdownClose.addEventListener('click', close_stock_breakdown);
+}
+
+document.addEventListener('keydown', function (event) {
+  if (event.key === 'Escape') {
+    close_stock_breakdown();
+  }
+});
+
 function get_product_by_serial(serial) {
   $.get(productsBaseUrl + 'get_product_by_serial?serial=' + encodeURIComponent(serial), function (data) {
     data = JSON.parse(data);
 
     if (data['status'] == 'ok') {
+      search_mode = 'serial';
+      verificationInput.placeholder = 'تحقق من رقم السريال';
       set_data(data);
       checkBtn.classList.remove("hide");
       prod_infos.classList.remove("hide");
@@ -203,30 +303,66 @@ function get_item_categories_by_serial_part(serial_part) {
   })
 }
 
-function nextBtn_handler() {
-  if (serialNumber.value.length < 6) {
-    document.getElementById("serialNumberError").classList.remove("hide");
-    document.querySelector('#serialNumberHistory').classList.add('hide');
-  } else {
-    document.getElementById("serialNumberError").classList.add("hide");
-    document.querySelector('#serialNumberHistory').classList.add('hide')
+function show_search_error(message) {
+  const errorElm = document.getElementById("serialNumberError");
+  errorElm.innerHTML = message;
+  errorElm.classList.remove("hide");
+}
 
-    if (radios_enabled == true && checkRadio()) {
-      disableRadios();
-      verification.classList.remove("hide");
-      verificationInput.focus()
-      checkBtn.classList.remove("hide");
-      nextBtn.classList.add("hide");
+// يحدد نوع الرقم المدخل (سريال / جزء سريال / صنف / باركود) ثم ينفذ منطق البحث الخاص به
+function resolve_search_term(term) {
+  $.get(productsBaseUrl + 'resolve_search_term?term=' + encodeURIComponent(term), function (data) {
+    data = JSON.parse(data);
 
-    } else if (serialNumber.value.length < 7) {
-      get_item_categories_by_serial_part(serialNumber.value);
-
-    } else {
-      showAddToCart();
-      get_product_by_serial(serialNumber.value);
+    if (data['status'] != 'ok') {
+      show_search_error(data['description']);
+      serialNumber.disabled = false;
+      return;
     }
+
+    if (data['type'] == 'serial') {
+      search_mode = 'serial';
+      showAddToCart();
+      get_product_by_serial(data['value']);
+
+    } else if (data['type'] == 'serial_part') {
+      search_mode = 'serial';
+      get_item_categories_by_serial_part(data['value']);
+
+    } else if (data['type'] == 'item_code') {
+      search_mode = 'item_code';
+      get_product_by_item_code(data['value']);
+    }
+  })
+}
+
+function nextBtn_handler() {
+  const term = serialNumber.value.trim();
+
+  if (term.length < 1) {
+    show_search_error('يرجى إدخال رقم السريال أو رقم الصنف أو الباركود');
+    document.querySelector('#serialNumberHistory').classList.add('hide');
+    return;
   }
 
+  // توحيد القيمة حتى تظل مطابقة عند خطوة التحقق
+  serialNumber.value = term;
+
+  document.getElementById("serialNumberError").classList.add("hide");
+  document.querySelector('#serialNumberHistory').classList.add('hide')
+
+  if (radios_enabled == true && checkRadio()) {
+    disableRadios();
+    search_mode = 'serial';
+    verificationInput.placeholder = 'تحقق من رقم السريال';
+    verification.classList.remove("hide");
+    verificationInput.focus()
+    checkBtn.classList.remove("hide");
+    nextBtn.classList.add("hide");
+    return;
+  }
+
+  resolve_search_term(term);
 }
 
 nextBtn.onclick = () => {
@@ -284,6 +420,18 @@ function enable_delivery_step() {
 }
 
 function checkBtn_handler() {
+  if (search_mode == 'item_code') {
+    const barcode = String(product_data['barcode'] || '');
+
+    if (barcode != '' && barcode.toUpperCase() == verificationInput.value.toUpperCase()) {
+      enable_delivery_step();
+      checkResult.innerHTML = checkResultMsgAccepted;
+    } else {
+      checkResult.innerHTML = checkResultMsgRejected;
+    }
+    return;
+  }
+
   if ((serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase() || 'S' + serialNumber.value.toUpperCase() == verificationInput.value.toUpperCase()) && !checkRadio()) {
     enable_delivery_step();
     checkResult.innerHTML = checkResultMsgAccepted;
@@ -318,95 +466,31 @@ try {
 
 
 
-//-----
-let itemCode = document.getElementById("itemCodeInput");
-let newVerificationInput = document.getElementById("newVerificationInput");
-let newVerification = document.getElementById("newVerification");
-let newCheckResult = document.querySelector(".newCheckResult");
-let newCheckBtn = document.getElementById("newCheckBtn");
-let newNextBtn = document.getElementById("newNextBtn");
-let newStartOverBtn = document.getElementById("newStartOverBtn");
-let newDeliveryBtn = document.getElementById("newDeliveryBtn");
-let newDelivery_btn = document.getElementsByClassName("newDelivery_btn");
-let newProd_infos = document.querySelector(".prod_infos");
-let newSelect_type = document.querySelector(".newSelect_type");
+//----- البحث برقم الصنف / الباركود (يستخدم نفس خانة البحث و خانة التحقق)
+function get_product_by_item_code(item_code) {
+  $.get(productsBaseUrl + 'get_product_by_item_code?item_code=' + encodeURIComponent(item_code), function (data) {
+    data = JSON.parse(data);
 
-function newNextBtn_handler() {
-  if (itemCode.value.length < 1) {
-    document.querySelector('.newserialAdd').classList.add('hide')
-    document.getElementById("itemCodeError").classList.remove("hide");
-  } else {
-    document.getElementById("itemCodeError").classList.add("hide");
+    if (data['status'] == 'ok') {
+      search_mode = 'item_code';
+      set_data(data);
 
-    $.get(productsBaseUrl + 'get_product_by_item_code?item_code=' + encodeURIComponent(itemCode.value), function (data) {
-      data = JSON.parse(data);
+      verificationInput.placeholder = 'تحقق من رقم الباركود';
+      verification.classList.remove("hide");
+      verificationInput.focus()
+      checkBtn.classList.remove("hide");
+      nextBtn.classList.add("hide");
+      serialNumber.disabled = true;
 
+      showAddToCart();
+      prod_infos.classList.remove("hide");
 
-      if (data['status'] == 'ok') {
-
-        set_data(data);
-        newVerification.classList.remove("hide");
-        newCheckBtn.classList.remove("hide");
-        itemCode.disabled = true;
-
-        document.querySelector('.newserialAdd').classList.remove('hide')
-        newProd_infos.classList.remove("hide");
-
-      } else {
-        document.getElementById("itemCodeError").innerText = data['description'];
-        document.getElementById("itemCodeError").classList.remove("hide");
-      }
-
-      newNextBtn.classList.add("hide");
-    })
-  }
+    } else {
+      show_search_error(data['description']);
+      serialNumber.disabled = false;
+    }
+  })
 }
-
-newNextBtn.onclick = () => {
-  newNextBtn_handler()
-}
-
-$('#itemCodeInput').on('keypress', (event) => {
-  let key = event.key;
-  if (key == 'Enter') {
-    event.preventDefault()
-    newNextBtn_handler();
-  }
-})
-
-function newCheckBtn_handler() {
-  if (product_data['barcode'].toUpperCase() == newVerificationInput.value.toUpperCase()) {
-    newCheckBtn.classList.add("hide");
-    newProd_infos.classList.remove("hide");
-    try {
-      newDeliveryBtn.classList.remove("hide");
-    } catch (error) { }
-
-    newVerificationInput.disabled = true;
-    newCheckResult.innerHTML = checkResultMsgAccepted;
-  } else {
-    newCheckResult.innerHTML = checkResultMsgRejected;
-  }
-}
-
-newCheckBtn.onclick = () => {
-  newCheckBtn_handler()
-}
-
-$('#newVerification').on('keypress', (event) => {
-  let key = event.key;
-  if (key == 'Enter') {
-    event.preventDefault()
-    newCheckBtn_handler();
-  }
-})
-
-try {
-  newDeliveryBtn.onclick = () => {
-    delivery_popup.classList.remove("hide");
-    process_type = 'addProductSearched';
-  }
-} catch (error) { }
 
 let delivery_popup = document.querySelector(".delivery_popup");
 let delivery_popup_btns = document.querySelector(".delivery_popup .btns");
@@ -584,27 +668,6 @@ document.getElementById("popup_employee_btn").onclick = () => {
     document.getElementById("popEmplError").classList.remove("hide");
   }
 }
-
-document.querySelectorAll(".list li").forEach(elm => {
-  elm.addEventListener('click', function () {
-    prod_infos.classList.add("hide");
-    if (elm.dataset.elm == ".conts") {
-      document.querySelector(".conts").classList.remove("hide");
-      document.querySelector(".conts2").classList.add("hide");
-    } else {
-      document.querySelector(".conts").classList.add("hide");
-      document.querySelector(".conts2").classList.remove("hide");
-    }
-    document.querySelectorAll(".list li").forEach(function (otherItem) {
-      if (otherItem !== elm) {
-        otherItem.classList.remove('active');
-      }
-    });
-    elm.classList.toggle('active');
-  });
-});
-
-
 
 // Image
 Fancybox.bind("[data-fancybox]", {
@@ -889,11 +952,12 @@ let selected_serial = new URLSearchParams(window.location.search).get('serial');
 let is_unified = new URLSearchParams(window.location.search).get('unified');
 
 if (selected_serial) {
+  serialNumber.value = selected_serial;
+
   if (is_unified && is_unified == '1') {
-    itemCode.value = selected_serial;
-    newNextBtn_handler();
+    search_mode = 'item_code';
+    get_product_by_item_code(selected_serial);
   } else {
-    serialNumber.value = selected_serial;
     nextBtn_handler();
   }
 }

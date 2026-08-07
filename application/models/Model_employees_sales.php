@@ -15,10 +15,12 @@ class Model_employees_sales extends CI_Model {
     }
 
     public function insert_upload_record($filepath, $filename, $individualsDate, $businessDate) {
-        # check if the filepath is found and then updates data
-        $query = $this->db->get_where($this->table, array('filepath' => $filepath));
+        # كل رفعة الآن لها مسار فريد دائمًا (انظر handle_employees_sales_upload)، لذا التطابق على
+        # filepath لن يتحقق أبدًا عمليًا؛ المطابقة الصحيحة لتحديث سجل موجود لنفس الفترة هي زوج
+        # التاريخين معًا، وإلا يُنشأ سجلان بنفس التاريخ ويصبح اختيارهما لاحقًا غير محدد
+        $query = $this->db->get_where($this->table, array('individuals_date' => $individualsDate, 'business_date' => $businessDate));
         if ($query->num_rows() > 0) {
-            $this->db->update($this->table, array('filename' => $filename, 'individuals_date' => $individualsDate, 'business_date' => $businessDate,), array('filepath' => $filepath));
+            $this->db->update($this->table, array('filepath' => $filepath, 'filename' => $filename), array('individuals_date' => $individualsDate, 'business_date' => $businessDate));
         } else {
             $this->db->insert($this->table, array('filepath' => $filepath, 'filename' => $filename, 'individuals_date' => $individualsDate, 'business_date' => $businessDate,));
         }

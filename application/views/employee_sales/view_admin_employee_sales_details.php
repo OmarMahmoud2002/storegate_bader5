@@ -1176,9 +1176,11 @@
                 <div class="calculation-options-container">
                     <div class="row align-items-center mb-3">
                         <?php
-                        // التحقق من المنصب
+                        // التحقق من المنصب (بعد التطبيع، بحيث تُعامَل "Professional Area Sales
+                        // Manager" كـ"Area Manager" تمامًا كما تم تأكيده)
                         $position = $employee_data['employee_info']['position'] ? $employee_data['employee_info']['position'] : '';
-                        $showCalculationMethod = (trim($position) === 'Branch Manager' || trim($position) === 'Branch Supervisor' || trim($position) === 'Area Manager');
+                        $canonicalPosition = resolve_canonical_position($position);
+                        $showCalculationMethod = in_array($canonicalPosition, ['Branch Manager', 'Branch Supervisor', 'Area Manager'], true);
                         ?>
 
                         <div class="col-md-4 text-start">
@@ -1196,15 +1198,16 @@
 
                         <?php 
                         
-                        if ($employee_data['employee_info']['position'] == 'Branch Supervisor') {
+                        if ($canonicalPosition === 'Branch Supervisor') {
                             $option1_text = 'مبيعات الموظفين';
                             $option2_text = 'مبيعاتي مع الموظفين';
                             $option3_text = 'مبيعاتي';
-                        } else if ($employee_data['employee_info']['position'] == 'Branch Manager') {
+                        } else if ($canonicalPosition === 'Branch Manager') {
                             $option1_text = 'مبيعات الموظفين';
                             $option2_text = 'مبيعات المشرفين مع الموظفين';
                             $option3_text = 'مبيعاتي';
-                        } else if ($employee_data['employee_info']['position'] == 'Area Manager') {
+                        } else if ($canonicalPosition === 'Area Manager') {
+                            // يشمل "Area Manager" و"Professional Area Sales Manager" (alias مؤكَّد)
                             $option1_text = 'مبيعات الموظفين';
                             $option2_text = 'مبيعات المشرفين و الموظفين و المدراء ';
                             $option3_text = 'مبيعاتي';
@@ -1244,7 +1247,7 @@
                                             <th>البيانات</th>
                                             <th>TGT</th>
                                             <th>Branch Sales</th>
-                                            <th>Digital Sales</th>
+                                            <th>Promo Code</th>
                                             <th>Total</th>
                                             <th>المتبقي</th>
                                             <th>نسبة الإنجاز</th>
@@ -1254,7 +1257,7 @@
                                     <?php
                                     // التحقق من المنصب لتفعيل الخاصية
                                     $position = $employee_data['employee_info']['position'] ? $employee_data['employee_info']['position'] : '';
-                                    $isManager = in_array(trim($position), ['Area Manager', 'Branch Manager', 'Branch Supervisor']);
+                                    $isManager = in_array(resolve_canonical_position($position), ['Area Manager', 'Branch Manager', 'Branch Supervisor'], true);
                                     $empId = $employee_data['employee_info']['emp_id'] ? $employee_data['employee_info']['emp_id'] : '';
 
 
@@ -1317,7 +1320,7 @@
                                     <tbody>
                                         <?php 
                                         $position = $employee_data['employee_info']['position'] ? $employee_data['employee_info']['position'] : '';
-                                        $isManager = in_array(trim($position), ['Area Manager', 'Branch Manager', 'Branch Supervisor']);
+                                        $isManager = in_array(resolve_canonical_position($position), ['Area Manager', 'Branch Manager', 'Branch Supervisor'], true);
                                         $empId = $employee_data['employee_info']['emp_id'] ? $employee_data['employee_info']['emp_id'] : '';
                                         ?>
                                         <?php foreach ($employee_data['table2'] as $fieldKey => $item): ?>
@@ -1361,7 +1364,7 @@
             <?php endif; ?>
 
             <!-- زر التحميل -->
-            <?php if ($CI->permission_enabled('employees_sales.download') == true) {?>
+            <?php if ($CI->get_permission_enabled('employees_sales.download') == true) {?>
             <div class="text-center mt-4">
                 <a href="<?= base_url('admin/download_employee_sales_data') ?>" class="btn btn-download">
                     <i class="fas fa-download me-2"></i> تحميل البيانات

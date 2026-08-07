@@ -160,7 +160,8 @@ class Shelves extends MY_Controller
                 'status' => 'success',
                 'exists' => !empty($item),
                 'serial' => !empty($item) ? $item['serial_number'] : $serial_number,
-                'subinventory_code' => !empty($item) ? $item['subinventory_code'] : null
+                'subinventory_code' => !empty($item) ? $item['subinventory_code'] : null,
+                'poster_number' => (!empty($item) && isset($item['poster_number'])) ? $item['poster_number'] : null
             )));
     }
 
@@ -207,7 +208,13 @@ class Shelves extends MY_Controller
                 $this->check_permission('shelves.items.remove');
                 $item_id = $this->input->post('itemid');
                 $item = $this->Store->get_store_item(['id' => $item_id]);
-                $this->Store->remove_item_from_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode']);
+
+                if ($item) {
+                    if ($item['serial_control'] == 'yes') {
+                        $this->Operations->add_operation(['item_description' => $item['item_description'], 'item_code' => $item['item_code'], 'serial' => $item['serial_number'], 'operation' => 'تم إزالة المنتج من رف ' . $this->Shelves->get_one_shelf_by_id($id)->shelf_number, 'sales_order' => '0'], $this->session->userdata('user_id'));
+                    }
+                    $this->Store->remove_item_from_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode']);
+                }
             }
         }
 
