@@ -46,6 +46,89 @@ class Other extends MY_Controller {
 	{
 		return Coordinate::stringFromColumnIndex($columnIndex + 1);
 	}
+
+	private function activateEmployeeSalesUpload($uploadRecord)
+	{
+		if (!$uploadRecord) {
+			return;
+		}
+
+		$this->session->set_userdata('employees_sales_upload_id', (int) $uploadRecord->id);
+		$this->session->set_userdata('individuals_date', $uploadRecord->individuals_date);
+		$this->session->set_userdata('business_date', $uploadRecord->business_date);
+	}
+
+	private function resolveEmployeeSalesUpload($requestedUploadId = null)
+	{
+		$hasRequestedUpload = $requestedUploadId !== null && $requestedUploadId !== '';
+		if ($hasRequestedUpload) {
+			$requestedUploadId = (int) $requestedUploadId;
+			if ($requestedUploadId <= 0) {
+				return null;
+			}
+
+			$requestedRecord = $this->EmployeesSales->get_upload_record_by_id($requestedUploadId);
+			if ($requestedRecord) {
+				$this->activateEmployeeSalesUpload($requestedRecord);
+			}
+
+			return $requestedRecord;
+		}
+
+		$sessionUploadId = (int) $this->session->userdata('employees_sales_upload_id');
+		if ($sessionUploadId > 0) {
+			$sessionRecord = $this->EmployeesSales->get_upload_record_by_id($sessionUploadId);
+			if ($sessionRecord && is_file($sessionRecord->filepath)) {
+				$this->activateEmployeeSalesUpload($sessionRecord);
+				return $sessionRecord;
+			}
+		}
+
+		// توافق رجعي مع installations التي كانت تحفظ الملف الحالي في tbl_variables فقط.
+		$legacyFilePath = $this->Variables->getdata('uploaded_file_path');
+		if ($legacyFilePath) {
+			$legacyRecord = $this->EmployeesSales->get_upload_record_by_filepath($legacyFilePath);
+			if ($legacyRecord && is_file($legacyRecord->filepath)) {
+				$this->activateEmployeeSalesUpload($legacyRecord);
+				return $legacyRecord;
+			}
+		}
+
+		// آخر سجل متاح هو الاختيار الافتراضي لأول دخول لكل مدير.
+		foreach ($this->EmployeesSales->get_all_upload_records() as $uploadRecord) {
+			if (is_file($uploadRecord->filepath)) {
+				$this->activateEmployeeSalesUpload($uploadRecord);
+				return $uploadRecord;
+			}
+		}
+
+		return null;
+	}
+
+	private function prepareEmployeeSalesViewData()
+	{
+		$activeUpload = $this->resolveEmployeeSalesUpload();
+		$uploads = $this->EmployeesSales->get_all_upload_records();
+
+		foreach ($uploads as $uploadRecord) {
+			$uploadRecord->is_available = is_file($uploadRecord->filepath);
+		}
+
+		$this->data['employee_sales_uploads'] = $uploads;
+		$this->data['active_employee_sales_upload'] = $activeUpload;
+		$this->data['active_employee_sales_upload_id'] = $activeUpload ? (int) $activeUpload->id : null;
+		$this->data['file_uploaded_name'] = $activeUpload ? $activeUpload->filename : null;
+	}
+
+	private function isValidEmployeeSalesDate($date)
+	{
+		if (!is_string($date) || $date === '') {
+			return false;
+		}
+
+		$parsed = \DateTime::createFromFormat('!Y-m-d', $date);
+		return $parsed && $parsed->format('Y-m-d') === $date;
+	}
 	
 	
 	public function index()
@@ -774,18 +857,10 @@ class Other extends MY_Controller {
 		}
 
 		$this->check_permission('employees_sales.search');
-		
+		$this->prepareEmployeeSalesViewData();
 
-		if (!$this->Variables->getdata('uploaded_file_path')) {
+		if (!$this->data['active_employee_sales_upload']) {
 			$this->session->set_flashdata('error', 'يرجى رفع ملف Excel أولاً.');
-		} else {
-			// get individuals_date and business_date from database using filepath and then set them in session
-			$uploadRecord = $this->EmployeesSales->get_upload_record_by_filepath($this->Variables->getdata('uploaded_file_path'));
-			if ($uploadRecord) {
-				$this->session->set_userdata('individuals_date', $uploadRecord->individuals_date);
-				$this->session->set_userdata('business_date', $uploadRecord->business_date);
-			}
-			
 		}
 
 		// استرجاع مصطلح البحث لملء الحقل إذا كان البحث سابقًا غير ناجح
@@ -797,11 +872,17 @@ class Other extends MY_Controller {
 			$searchTerm = trim($this->input->post('search_term'));
 		}
 
+		$employeeData = $this->session->userdata('employee_data');
+		if (($searchTerm === null || $searchTerm === '') && !empty($employeeData['employee_info']['emp_id'])) {
+			// بعد نجاح البحث نحتفظ برقم الموظف حتى يمكن إعادة نفس البحث عند اختيار ملف تاريخي آخر.
+			$searchTerm = (string) $employeeData['employee_info']['emp_id'];
+		}
+
 		$data = array(
-			'employee_data' => $this->session->userdata('employee_data'), // للحفاظ على بيانات الموظف المعروض
+			'employee_data' => $employeeData, // للحفاظ على بيانات الموظف المعروض
 			'search_error' => $this->session->flashdata('error'),
 			'search_term_value' => $searchTerm, // لإعادة ملء حقل البحث
-			'file_uploaded_name' => ($this->Variables->getdata('uploaded_file_name')) ? $this->Variables->getdata('uploaded_file_name') : 'الملف المرفوع'
+			'file_uploaded_name' => $this->data['file_uploaded_name'] ? $this->data['file_uploaded_name'] : 'الملف المرفوع'
 		);
 
 		$this->data = array_merge($this->data, $data);
@@ -823,14 +904,7 @@ class Other extends MY_Controller {
 		}
 
 		$this->check_permission('employees_sales.view');
-	
-		// get individuals_date and business_date from database using filepath and then set them in session
-		$uploadRecord = $this->EmployeesSales->get_upload_record_by_filepath($this->Variables->getdata('uploaded_file_path'));
-		if ($uploadRecord) {
-			$this->session->set_userdata('individuals_date', $uploadRecord->individuals_date);
-			$this->session->set_userdata('business_date', $uploadRecord->business_date);
-		}
-			
+		$this->prepareEmployeeSalesViewData();
 		
 		$this->load->view('employee_sales/view_admin_search_employees_sales', $this->data);
 	}
@@ -841,19 +915,40 @@ class Other extends MY_Controller {
 		}
 
 		$this->check_permission('employees_sales.upload');
-		
+		$this->prepareEmployeeSalesViewData();
 		$this->load->view('employee_sales/view_admin_employees_sales_uploader', $this->data);
 	}
 
 	public function handle_employees_sales_upload()
     {
-		$original_filename = $_FILES['userfile']['name'];
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+
+		$this->check_permission('employees_sales.upload');
+
+		$individualsDate = trim((string) $this->input->post('individuals_date'));
+		$businessDate = trim((string) $this->input->post('business_date'));
+		if (!$this->isValidEmployeeSalesDate($individualsDate) || !$this->isValidEmployeeSalesDate($businessDate)) {
+			$this->session->set_flashdata('upload_error', 'يرجى إدخال تاريخ الأفراد وتاريخ الأعمال بصورة صحيحة قبل رفع الملف.');
+			redirect(base_url('admin/employees_sales_upload'));
+		}
+
+		if (empty($_FILES['userfile']['name'])) {
+			$this->session->set_flashdata('upload_error', 'يرجى اختيار ملف Excel للرفع.');
+			redirect(base_url('admin/employees_sales_upload'));
+		}
+
+		$original_filename = basename($_FILES['userfile']['name']);
 
 		// اسم تخزين فريد لكل رفعة (تاريخ+وقت+عشوائي+الاسم الأصلي مُطهَّرًا) بدل استخدام الاسم
 		// الأصلي كما هو: يمنع استبدال ملف تاريخي مرفوع سابقًا عند تطابق اسم الملف (overwrite=TRUE
 		// في do_upload). الاسم الأصلي يبقى محفوظًا كما هو في عمود filename بقاعدة البيانات.
-		$extension = pathinfo($original_filename, PATHINFO_EXTENSION);
+		$extension = strtolower(pathinfo($original_filename, PATHINFO_EXTENSION));
 		$safeBase = preg_replace('/[^A-Za-z0-9_\-]/', '_', pathinfo($original_filename, PATHINFO_FILENAME));
+		if ($safeBase === '') {
+			$safeBase = 'employees_sales';
+		}
 		$storageFilename = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '_' . $safeBase . '.' . $extension;
 
         $uploadStatus = do_upload($this, 'userfile', $storageFilename, './public/employees_sales/', 'xls|xlsx', 10 * 1024 * 1024);
@@ -885,29 +980,40 @@ class Other extends MY_Controller {
 				redirect(base_url('admin/employees_sales_upload'));
 			}
 
-			 // حفظ التواريخ في الـ session
-			$individualsDate = $this->input->post('individuals_date');
-			$businessDate = $this->input->post('business_date');
-
-			if ($individualsDate) {
-				$this->session->set_userdata('individuals_date', $individualsDate);
+			// بناء كاش الملف الآن حتى تكون أول عملية بحث سريعة، والتأكد أن البيانات قابلة للقراءة كاملة.
+			try {
+				load_employees_sales_data($filepath);
+			} catch (\Exception $e) {
+				@unlink($filepath);
+				log_message('error', '[handle_employees_sales_upload:warm_cache] ' . $e->getMessage());
+				$this->session->set_flashdata('upload_error', 'تمت قراءة بنية الملف ولكن تعذّر تجهيز بياناته للبحث، لذلك لم يتم حفظه.');
+				redirect(base_url('admin/employees_sales_upload'));
 			}
-			if ($businessDate) {
-				$this->session->set_userdata('business_date', $businessDate);
+
+			$uploadId = $this->EmployeesSales->insert_upload_record($filepath, $original_filename, $individualsDate, $businessDate);
+			if (!$uploadId) {
+				// نحذف الرفعة الجديدة فقط عند فشل إنشاء سجلها، ولا نمس أي ملف تاريخي سابق.
+				@unlink($filepath);
+				@unlink(employees_sales_cache_file_path($filepath));
+				$this->session->set_flashdata('upload_error', 'تعذّر حفظ سجل الملف في قاعدة البيانات. لم يتم تغيير أي ملف سابق.');
+				redirect(base_url('admin/employees_sales_upload'));
 			}
 
-			$successMessage = 'تم رفع الملف بنجاح: ' . htmlspecialchars($original_filename);
+			$uploadRecord = $this->EmployeesSales->get_upload_record_by_id($uploadId);
+			$this->activateEmployeeSalesUpload($uploadRecord);
+
+			$successMessage = 'تم رفع الملف بنجاح: ' . $original_filename;
 			if (!empty($validation['warnings'])) {
 				$successMessage .= ' (تنبيه: ' . implode('، ', $validation['warnings']) . ')';
 			}
 
 			$this->session->set_flashdata('upload_success', $successMessage);
+			// يحتفظ المتغير العام بآخر رفعة للتوافق مع أي كود قديم فقط؛ الاختيار الفعلي لكل مدير في الـSession.
 			$this->Variables->setdata('uploaded_file_path', $filepath);
 			$this->Variables->setdata('uploaded_file_name', $original_filename);
-			$this->EmployeesSales->insert_upload_record($filepath, $original_filename, $individualsDate, $businessDate);
 
 			$this->session->unset_userdata('employee_data');
-			$this->session->unset_userdata('search_term');
+			$this->session->unset_userdata('search_term_repopulate');
 
 			redirect(base_url('admin/employees_sales_search'));
 		}
@@ -926,45 +1032,35 @@ class Other extends MY_Controller {
 
 	public function process_employee_sales_search()
     {
-        $filePath = $this->Variables->getdata('uploaded_file_path');
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+
+		$this->check_permission('employees_sales.search');
+
         $searchTerm = trim((string) $this->input->post('search_term'));
-		$calculation_method = $this->input->post('calculation_method') ? $this->input->post('calculation_method') : 1;
-		$individualsDate = $this->input->post('individuals_date');
+		$calculation_method = (int) ($this->input->post('calculation_method') ? $this->input->post('calculation_method') : 1);
+		if (!in_array($calculation_method, [1, 2, 3], true)) {
+			$calculation_method = 1;
+		}
+
+		$requestedUploadId = $this->input->post('upload_id');
+		$uploadRecord = $this->resolveEmployeeSalesUpload($requestedUploadId);
         
         // تخزين مصطلح البحث لإعادة ملء الحقل في حالة الخطأ أو عدم العثور
         $this->session->set_userdata('search_term_repopulate', $searchTerm);
 
+		if (!$uploadRecord) {
+			$this->session->set_flashdata('search_error', 'الملف المحدد غير مسجل. اختر ملفًا آخر أو ارفع ملفًا جديدًا.');
+			$this->session->unset_userdata('employee_data');
+			redirect(base_url('admin/employees_sales_search'));
+		}
 
-        if (!$filePath || !file_exists($filePath)) {
-            $this->session->set_flashdata('upload_error', 'ملف البيانات غير موجود. يرجى إعادة رفع الملف.');
-			$this->Variables->remdata('uploaded_file_path');
-			$this->Variables->remdata('uploaded_file_name');
-            $this->session->unset_userdata(['employee_data']);
-            redirect(base_url('admin/employees_sales_upload'));
-        }
-
-		if ($individualsDate) {
-			$upload_record = $this->EmployeesSales->get_upload_record_by_date($individualsDate);
-			if (!$upload_record) {
-				$this->session->set_flashdata('search_error', 'لا يوجد سجل رفع مطابق لتاريخ الأفراد المحدد.');
-				$this->session->unset_userdata('employee_data');
-				redirect(base_url('admin/employees_sales_search'));
-			}
-			$filepath = $upload_record->filepath;
-			$filename = $upload_record->filename;
-			$this->Variables->setdata('uploaded_file_path', $filepath);
-			$this->Variables->setdata('uploaded_file_name', $filename);
-			$this->session->set_userdata('individuals_date', $individualsDate);
-			$this->session->set_userdata('business_date', $upload_record->business_date);
-			$filePath = $filepath;
-		} else {
-			$uploadRecord = $this->EmployeesSales->get_upload_record_by_filepath($filePath);
-			$individualsDate = $uploadRecord->individuals_date;
-			$this->Variables->setdata('uploaded_file_path', $filePath);
-			$this->Variables->setdata('uploaded_file_name', $uploadRecord->filename);
-			$this->session->set_userdata('individuals_date', $individualsDate);
-			$this->session->set_userdata('business_date', $uploadRecord->business_date);
-			$filePath = $filePath;
+		$filePath = $uploadRecord->filepath;
+		if (!is_file($filePath)) {
+			$this->session->set_flashdata('search_error', 'ملف البيانات المحدد غير موجود على السيرفر. لم يتم حذف سجله؛ اختر ملفًا آخر من القائمة.');
+			$this->session->unset_userdata('employee_data');
+			redirect(base_url('admin/employees_sales_search'));
 		}
 
 		if (empty($searchTerm)) {
@@ -1018,6 +1114,7 @@ class Other extends MY_Controller {
                     strcasecmp($currentEmpId, $searchTerm) == 0) {
                     
                     $employeeData = [
+						'upload_id' => (int) $uploadRecord->id,
 						'calculation_method' => $calculation_method,
                         'employee_info' => [
                             'name' => $currentName,
@@ -1153,10 +1250,12 @@ class Other extends MY_Controller {
             }
 
         } catch (SpreadsheetException $e) {
-            $this->session->setFlashdata('search_error', 'خطأ في قراءة ملف Excel: ' . htmlspecialchars($e->getMessage()));
+			$this->session->unset_userdata('employee_data');
+            $this->session->set_flashdata('search_error', 'خطأ في قراءة ملف Excel: ' . htmlspecialchars($e->getMessage()));
             log_message('error', '[SpreadsheetException] ' . $e->getMessage() . ' Trace: ' . $e->getTraceAsString());
         } catch (\Exception $e) {
-            $this->session->setFlashdata('search_error', 'حدث خطأ عام أثناء البحث: ' . htmlspecialchars($e->getMessage()));
+			$this->session->unset_userdata('employee_data');
+            $this->session->set_flashdata('search_error', 'حدث خطأ عام أثناء البحث: ' . htmlspecialchars($e->getMessage()));
             log_message('error', '[Exception] ' . $e->getMessage() . ' Trace: ' . $e->getTraceAsString());
         } finally {
             // Clean up spreadsheet object to free memory
@@ -1186,7 +1285,8 @@ class Other extends MY_Controller {
             return;
         }
 
-        $filePath = $this->Variables->getdata('uploaded_file_path');
+		$uploadRecord = $this->resolveEmployeeSalesUpload();
+		$filePath = $uploadRecord ? $uploadRecord->filepath : null;
 
         // الحصول على البيانات من الطلب
         $empId = $this->input->post('emp_id');
@@ -1291,7 +1391,7 @@ class Other extends MY_Controller {
 		}
 		
 		$this->check_permission('employees_sales.search');
-		
+		$this->prepareEmployeeSalesViewData();
 		$this->load->view('employee_sales/view_admin_employee_sales_details', $this->data);
 	}
 

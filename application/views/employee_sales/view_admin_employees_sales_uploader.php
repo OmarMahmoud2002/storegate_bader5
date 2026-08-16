@@ -38,12 +38,12 @@ $businessDate = $this->session->userdata('business_date');
                     <div class="employee-sales-field">
                         <label for="individuals_date">الأفراد حتى تاريخ</label>
                         <input type="date" name="individuals_date" id="individuals_date"
-                            value="<?= htmlspecialchars($individualsDate ? $individualsDate : '') ?>">
+                            value="<?= htmlspecialchars($individualsDate ? $individualsDate : '') ?>" required>
                     </div>
                     <div class="employee-sales-field">
                         <label for="business_date">الأعمال حتى تاريخ</label>
                         <input type="date" name="business_date" id="business_date"
-                            value="<?= htmlspecialchars($businessDate ? $businessDate : '') ?>">
+                            value="<?= htmlspecialchars($businessDate ? $businessDate : '') ?>" required>
                     </div>
                 </div>
 
@@ -57,6 +57,7 @@ $businessDate = $this->session->userdata('business_date');
                     </label>
                 </div>
                 <p class="employee-sales-dropzone-hint">يجب أن يكون الملف بصيغة xlsx, xls ومشابهًا في الهيكل للملف المثال.</p>
+				<p class="employee-sales-history-note"><i class="bi bi-shield-check"></i> سيُحفظ هذا الملف كنسخة مستقلة، ولن يتم استبدال أي ملف مرفوع سابقًا.</p>
 
                 <button type="submit" class="employee-sales-submit-btn">
                     <i class="bi bi-upload"></i>
@@ -79,7 +80,7 @@ $businessDate = $this->session->userdata('business_date');
                             </p>
                         <?php endif; ?>
                     </div>
-                    <a href="<?= site_url('employee/search') ?>" class="employee-sales-goto-search">
+                    <a href="<?= site_url('admin/employees_sales_search') ?>" class="employee-sales-goto-search">
                         <i class="bi bi-search"></i>
                         <span>الانتقال إلى صفحة البحث</span>
                     </a>

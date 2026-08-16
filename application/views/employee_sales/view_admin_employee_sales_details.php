@@ -1047,58 +1047,77 @@
     }
 </style>
 
-<div class = 'app-content'>
+<div class="app-content admin-ui-page admin-ui-employee-sales employee-sales-details-page">
     <div class="container-fluid py-4">
         <!-- عرض الملف المرفوع والتواريخ -->
         <?php
-        $file_uploaded_name = $this->Variables->getdata('uploaded_file_name');
-        $individualsDate = $this->session->userdata('individuals_date');
-        $businessDate = $this->session->userdata('business_date');
-        if ($file_uploaded_name):
+        $activeUpload = isset($active_employee_sales_upload) ? $active_employee_sales_upload : null;
+        $uploads = isset($employee_sales_uploads) ? $employee_sales_uploads : [];
+        $activeUploadId = isset($active_employee_sales_upload_id) ? (int) $active_employee_sales_upload_id : 0;
+        $file_uploaded_name = $activeUpload ? $activeUpload->filename : null;
+        $individualsDate = $activeUpload ? $activeUpload->individuals_date : null;
+        $businessDate = $activeUpload ? $activeUpload->business_date : null;
+        if ($activeUpload):
         ?>
-            <div class="alert alert-info">
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <strong>الملف المرفوع حاليًا:</strong> <?= htmlspecialchars($file_uploaded_name) ?>
-                        <?php if ($individualsDate || $businessDate): ?>
-                            <br>
-                            <?php if ($individualsDate): ?>
-                                <strong>الأفراد حتى تاريخ:</strong> <?= htmlspecialchars($individualsDate) ?>
-                                <?php if ($businessDate): ?> | <?php endif; ?>
-                            <?php endif; ?>
-                            <?php if ($businessDate): ?>
-                                <strong>الأعمال حتى تاريخ:</strong> <?= htmlspecialchars($businessDate) ?>
-                            <?php endif; ?>
-                        <?php endif; ?>
+            <section class="employee-sales-history-panel" aria-labelledby="employeeSalesHistoryTitle">
+                <div class="employee-sales-active-file">
+                    <span class="employee-sales-active-file-icon" aria-hidden="true">
+                        <i class="bi bi-file-earmark-spreadsheet-fill"></i>
+                    </span>
+                    <div>
+                        <span>الملف المستخدم في النتائج الحالية</span>
+                        <strong><?= htmlspecialchars($file_uploaded_name) ?></strong>
+                        <p>
+                            <span><i class="bi bi-people"></i> الأفراد حتى <?= htmlspecialchars($individualsDate) ?></span>
+                            <span><i class="bi bi-briefcase"></i> الأعمال حتى <?= htmlspecialchars($businessDate) ?></span>
+                        </p>
                     </div>
-                    <form class="col-md-4" method="post" action="<?= base_url('admin/process_employee_sales_search') ?>">
-                        <div class="d-flex align-items-center justify-content-end gap-2">
-                            <label for="previousDataDate" class="mb-0" style="white-space: nowrap;">
-                                <strong>البيانات السابقة بتاريخ:</strong>
-                            </label>
-                            <input type="date"
-                                id="previousDataDate"
-                                class="form-control form-control-sm"
-                                style="max-width: 150px;"
-                                placeholder="اختر التاريخ"
-                                name="individuals_date">
-                            <button type="submit"
-                                    id="searchPreviousDataBtn"
-                                    class="btn btn-sm btn-primary"
-                                    title="بحث عن البيانات السابقة"
-                                    style="white-space: nowrap;">
-                                <i class="fas fa-search"></i>
-                            </button>
-                            <input type="hidden" name="search_term" value="<?= $search_term_value ? $search_term_value : '' ?>">
-                        </div>
-                    </form>
                 </div>
-            </div>
+
+                <form class="employee-sales-history-form" method="post" action="<?= base_url('admin/process_employee_sales_search') ?>">
+                    <?php echo form_hidden($this->security->get_csrf_token_name(), $this->security->get_csrf_hash()); ?>
+                    <label for="previousDataUpload" id="employeeSalesHistoryTitle">
+                        <i class="bi bi-clock-history" aria-hidden="true"></i>
+                        <span>البيانات السابقة</span>
+                    </label>
+                    <div class="employee-sales-history-action">
+                        <div class="employee-sales-history-select-wrap">
+                            <i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>
+                            <select id="previousDataUpload" name="upload_id" onchange="this.form.submit()" required>
+                                <?php foreach ($uploads as $upload): ?>
+                                    <?php
+                                    $isAvailable = !isset($upload->is_available) || $upload->is_available;
+                                    $optionLabel = $upload->filename
+                                        . ' — الأفراد حتى ' . $upload->individuals_date
+                                        . ' | الأعمال حتى ' . $upload->business_date;
+                                    if (!$isAvailable) {
+                                        $optionLabel .= ' — الملف غير متاح';
+                                    }
+                                    ?>
+                                    <option value="<?= (int) $upload->id ?>"
+                                        <?= (int) $upload->id === $activeUploadId ? 'selected' : '' ?>
+                                        <?= !$isAvailable ? 'disabled' : '' ?>>
+                                        <?= htmlspecialchars($optionLabel) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <i class="bi bi-chevron-down employee-sales-history-chevron" aria-hidden="true"></i>
+                        </div>
+                        <button type="submit" title="البحث عن نفس الموظف داخل الملف المحدد">
+                            <i class="bi bi-search"></i>
+                            <span>بحث في الملف</span>
+                        </button>
+                    </div>
+                    <input type="hidden" name="search_term" value="<?= htmlspecialchars($search_term_value ? $search_term_value : '') ?>">
+                    <input type="hidden" name="calculation_method" value="<?= isset($employee_data['calculation_method']) ? (int) $employee_data['calculation_method'] : 1 ?>">
+                </form>
+            </section>
         <?php endif; ?>
 
         <!-- نموذج البحث -->
         <div class="search-form">
             <form action="<?= base_url('admin/process_employee_sales_search') ?>" method="post" class="row g-3 align-items-center">
+                <input type="hidden" name="upload_id" value="<?= $activeUploadId ?>">
                 <div class="col-md-9">
                     <input type="text" name="search_term" class="form-control form-control-lg" 
                             placeholder="ابحث باستخدام الاسم، رقم الهوية، أو الرقم الوظيفي" 
@@ -1124,7 +1143,7 @@
 
         <?php if (isset($employee_data) && !empty($employee_data)): ?>
             <!-- زر Toggle لإخفاء/إظهار معلومات الموظف -->
-            <div class="d-flex justify-content-start mb-3">
+            <div class="d-flex justify-content-end mb-3">
                 <button class="btn btn-outline-primary" type="button" id="toggleEmployeeInfo" title="إظهار/إخفاء معلومات الموظف">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye-slash" viewBox="0 0 16 16">
                         <path d="m10.79 12.912-1.614-1.615a3.5 3.5 0 0 1-4.474-4.474l-2.06-2.06C.938 6.278 0 8 0 8s3 5.5 8 5.5a7 7 0 0 0 2.79-.588M5.21 3.088A7 7 0 0 1 8 2.5c5 0 8 5.5 8 5.5s-.939 1.721-2.641 3.238l-2.062-2.062a3.5 3.5 0 0 0-4.474-4.474z"/>
@@ -1219,6 +1238,7 @@
                             <div class="col-md-6">
                                 <form action = '<?= base_url('admin/process_employee_sales_search') ?>' method = 'post'>
                                     <input type = 'hidden' name = 'search_term' value = '<?= htmlspecialchars($employee_data['employee_info']['emp_id'] ? $employee_data['employee_info']['emp_id'] : '') ?>'>
+									<input type="hidden" name="upload_id" value="<?= $activeUploadId ?>">
                                     <div class="d-flex align-items-center justify-content-end">
                                         <label for="calculation_method" class="form-label mb-0 ms-3" style="font-weight: 600; color: #2c3e50; font-size:20px;">طريقة احتساب المبيعات:</label>
                                         
