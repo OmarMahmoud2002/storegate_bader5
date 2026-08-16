@@ -1849,10 +1849,10 @@ function getShelfSaveConfirmationMessage(counts) {
     const skipped = counts.total - counts.valid
 
     if (skipped > 0) {
-        return 'هيتم حفظ ' + counts.valid + ' سيريال موجود فقط، وتجاهل ' + skipped + ' سيريال غير موجود.'
+        return ' حفظ عدد ' + counts.valid + ' رقم تسلسلي موجود فقط، وتجاهل ' + skipped + ' سيريال غير موجود.'
     }
 
-    return 'هيتم حفظ ' + counts.valid + ' سيريال موجود.'
+    return ' حفظ عدد ' + counts.valid + ' رقم تسلسلي موجود فقط.'
 }
 
 function send_change_request() {

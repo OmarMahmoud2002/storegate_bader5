@@ -184,7 +184,7 @@ $size = 17;
                 <td class = '<?php echo $total_jowy > 0 ? 'clickable' : 'zero-value'?>'><?php echo number_format($total_jowy, 2); ?></td>
             </tr>
             <tr>
-                <td style="white-space: nowrap;" colspan="2" class = 'category'>مبيعات كوبيك بلس</td>
+                <td style="white-space: nowrap;" colspan="2" class = 'category'>مبيعات كويك بلس</td>
                 <?php foreach ($employees_to_display as $row): ?>
                     <td class = '<?php echo $quickplus_sales[$row['user_id']] > 0 ? 'clickable' : 'zero-value'; ?>'><?php echo number_format(isset($quickplus_sales[$row['user_id']]) ? $quickplus_sales[$row['user_id']] : 0, 2); ?></td>
                 <?php endforeach; ?>

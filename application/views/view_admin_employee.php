@@ -45,7 +45,7 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
                 <input type="text" name="user_jawwi" value="<?php echo safe_data($employee['user_jawwi']); ?>" placeholder="أدخل هنا">
               </div>
               <div class="inpt">
-                <label>يوزر كوبيك بلس</label>
+                <label>يوزر كويك بلس</label>
                 <input type="text" name="user_cubic_plus" value="<?php echo safe_data($employee['user_cubic_plus']); ?>" placeholder="أدخل هنا">
               </div>
               <?php if ($can_edit_employee): ?>

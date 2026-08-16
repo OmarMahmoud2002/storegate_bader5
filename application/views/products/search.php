@@ -236,6 +236,17 @@ if ($stock_upload_time !== false) {
     color: #1d2939;
     font-weight: 900;
   }
+
+  .top_part #startOverBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .top_part #startOverBtn i {
+    font-size: 14px;
+  }
 </style>
 
 <div class='app-content admin-ui-page admin-ui-product-search'>
@@ -267,7 +278,7 @@ if ($stock_upload_time !== false) {
         <?php endif; ?>
       </div>
       <div class='top_part'>
-        <button type='button' id='startOverBtn'>البدء من جديد</button>
+        <button type='button' id='startOverBtn'><i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>البحث من جديد</span></button>
         <?php $count = count($cart); ?>
         <div class="cart-menu">
           <div class="cart" title="سلة المنتجات" aria-label="سلة المنتجات">
@@ -360,7 +371,7 @@ if ($stock_upload_time !== false) {
         <div class="inpts">
           <div class="inpt" id="serialNumber">
             <div style='display: flex; align-items: center; gap: 10px;'>
-              <input type="text" id="serialNumberInput" placeholder="أدخل رقم السريال أو رقم الصنف أو الباركود">
+              <input type="text" id="serialNumberInput" placeholder="ادخل الرقم التسلسلي أو رقم الصنف أو الباركود">
 
               <?php if ($can_add_to_cart): ?>
                 <i class="fa fa-plus serialAdd hide" onclick="register_item_to_cart()"></i>

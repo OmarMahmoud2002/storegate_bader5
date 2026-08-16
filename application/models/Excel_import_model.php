@@ -94,7 +94,7 @@ public function get_employee_sold_devices($user_id) {
             $records[$index]['insert_excel_sales_type'] = 'مبيعات جوي';
         } else if ((float) $record['insert_excel_quickplus'] > 0) {
             $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_quickplus'];
-            $records[$index]['insert_excel_sales_type'] = 'مبيعات كوبيك بلس';
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات كويك بلس';
         }
     }
 
@@ -154,7 +154,7 @@ public function get_sales_by_serial($serial) {
             $records[$index]['insert_excel_sales_type'] = 'مبيعات جوي';
         } else if ((float) $record['insert_excel_quickplus'] > 0) {
             $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_quickplus'];
-            $records[$index]['insert_excel_sales_type'] = 'مبيعات كوبيك بلس';
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات كويك بلس';
         }
     }
 

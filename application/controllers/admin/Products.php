@@ -2,6 +2,7 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
 class Products extends MY_Controller
 {
@@ -402,6 +403,70 @@ class Products extends MY_Controller
         $this->data['low_products'] = $this->Store->get_low_products();
 
         $this->load->view('products/low', $this->data);
+    }
+
+    function export_low()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
+
+        $this->check_permission('products.low.view');
+
+        $low_products = $this->Store->get_low_products();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Low Stock');
+        $sheet->setRightToLeft(true);
+
+        $headers = array(
+            'A1' => 'المنتج',
+            'B1' => 'رقم الصنف',
+            'C1' => 'تصنيف المنتج',
+            'D1' => 'العدد المتبقي',
+            'E1' => 'الحد الأدنى',
+            'F1' => 'آخر تحديث',
+            'G1' => 'الحالة',
+        );
+
+        foreach ($headers as $cell => $value) {
+            $sheet->setCellValue($cell, $value);
+        }
+
+        $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+
+        $rowNumber = 2;
+        foreach ($low_products as $product) {
+            $sheet->setCellValue('A' . $rowNumber, $product['item_description']);
+            $sheet->setCellValue('B' . $rowNumber, $product['item_code']);
+            $sheet->setCellValue('C' . $rowNumber, $product['item_category']);
+            $sheet->setCellValue('D' . $rowNumber, (int) $product['total_quantity']);
+            $sheet->setCellValue('E' . $rowNumber, (int) $product['low_quantity']);
+            $sheet->setCellValue('F' . $rowNumber, $product['updated_at']);
+            $sheet->setCellValue('G' . $rowNumber, 'الكمية منخفضة');
+            $rowNumber++;
+        }
+
+        foreach (range('A', 'G') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $sheet->freezePane('A2');
+
+        $filename = 'low_products_' . date('Y-m-d_H-i-s') . '.xlsx';
+
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+
+        $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $writer->save('php://output');
+        exit;
     }
 
     function search()
