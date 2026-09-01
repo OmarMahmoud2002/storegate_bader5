@@ -126,26 +126,28 @@ document
   .addEventListener("input", updateOverallTotal);
 
 const amountInput = document.getElementById("amountInput");
-const repetitionInput = document.getElementById('repetitionInput')
+const repetitionInput = document.getElementById("repetitionInput");
 const amountList = document.getElementById("amountList");
 const amountCount = document.getElementById("amountCount");
-const totalAmount = document.getElementById("totalAmount1");
+const cardTotalAmount = document.getElementById("totalAmount1");
+const amountModalElement = document.getElementById("amountModal");
 const amounts = [];
 
 function addAmount() {
-  const value = amountInput.value.trim();
-  let repetition = repetitionInput.value.trim();
-  if (value === "") return;
-  if (repetition === "") {
-    repetition = 1;
-  } else {
-    repetition = parseInt(repetition);
+  const value = parseFloat(amountInput.value);
+  let repetition = parseInt(repetitionInput.value || "1", 10);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    amountInput.focus();
+    return;
   }
+
+  if (!Number.isInteger(repetition) || repetition < 1) repetition = 1;
 
   for (let i = 0; i < repetition; i++) {
     amounts.push(value);
   }
-  
+
   renderAmounts();
   amountInput.value = "";
   repetitionInput.value = "";
@@ -161,89 +163,310 @@ function renderAmounts() {
   amountList.innerHTML = "";
   let totalAmountValue = 0;
 
-  // Reverse the order when displaying
+  if (amounts.length === 0) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyRow.className = "card-amount-empty";
+    emptyCell.colSpan = 3;
+    emptyCell.textContent = "لم تتم إضافة مبالغ بعد";
+    emptyRow.appendChild(emptyCell);
+    amountList.appendChild(emptyRow);
+  }
+
   [...amounts].reverse().forEach((amount, index) => {
-    const number = parseFloat(amount);
-    if (!isNaN(number)) totalAmountValue += number;
+    const originalIndex = amounts.length - 1 - index;
+    totalAmountValue += amount;
 
     const row = document.createElement("tr");
-    row.innerHTML = `
-  <td style="width: 10%; padding: 2px; line-height: 1; vertical-align: middle;">
-    ${amounts.length - index}
-  </td>
-  <td style="width: 70%; padding: 2px; line-height: 1; vertical-align: middle;">
-    ${amount}
-  </td>
-  <td style="width: 20%; padding: 2px; line-height: 1; vertical-align: middle;">
-    <button class="btn btn-danger btn-sm" onclick="removeAmount(${
-      amounts.length - 1 - index
-    })">🗑</button>
-  </td>
-`;
+    const indexCell = document.createElement("td");
+    const amountCell = document.createElement("td");
+    const actionCell = document.createElement("td");
+    const removeButton = document.createElement("button");
 
-
-    // Add hover effect
-    row.addEventListener("mouseover", () => {
-      row.style.backgroundColor = "#f0f0f0";
-    });
-    row.addEventListener("mouseout", () => {
-      row.style.backgroundColor = "";
+    indexCell.textContent = String(originalIndex + 1);
+    amountCell.textContent = amount.toFixed(2);
+    amountCell.setAttribute("dir", "ltr");
+    removeButton.type = "button";
+    removeButton.className = "card-amount-remove";
+    removeButton.setAttribute("aria-label", "حذف المبلغ");
+    removeButton.innerHTML = '<i class="bi bi-trash3"></i>';
+    removeButton.addEventListener("click", () => {
+      removeAmount(originalIndex);
     });
 
+    actionCell.appendChild(removeButton);
+    row.appendChild(indexCell);
+    row.appendChild(amountCell);
+    row.appendChild(actionCell);
     amountList.appendChild(row);
   });
 
   amountCount.textContent = amounts.length;
-  totalAmount.textContent = totalAmountValue.toFixed(2);
+  cardTotalAmount.textContent = totalAmountValue.toFixed(2);
 }
 
-function esc() {
-  const amountModalEl = document.getElementById("amountModal");
-  const amountModal = bootstrap.Modal.getInstance(amountModalEl);
-
-  if (amountModal) {
-    const totalAmountValue =
-      document.getElementById("totalAmount1").textContent;
-    document.getElementById("user_lock_span").value = totalAmountValue;
-    amountModal.hide();
-
-    updateOverallTotal();
-  }
+// نفتح المودال بالكود زي حاسبة الكاش بالظبط.
+// لو استخدمنا data-bs-toggle، الـ data-api بتاع Bootstrap بيقفل أي مودال مفتوح
+// (SELECTOR .modal.show) قبل ما يفتح الجديد، فبيختفي مودال اضافة التقفيلة.
+const openCardAmountPopup = document.getElementById("openCardAmountPopup");
+if (openCardAmountPopup) {
+  openCardAmountPopup.addEventListener("click", function () {
+    bootstrap.Modal.getOrCreateInstance(amountModalElement).show();
+  });
 }
 
-amountInput.addEventListener("keydown", function (e) {
-  if (e.key === "Enter") {
-    addAmount();
+amountModalElement.addEventListener("show.bs.modal", function () {
+  const currentAmount = parseFloat(document.getElementById("user_lock_span").value) || 0;
+  if (amounts.length === 0 && currentAmount > 0) {
+    amounts.push(currentAmount);
+    renderAmounts();
   }
+});
+
+amountModalElement.addEventListener("shown.bs.modal", function () {
+  // يفضل فوق مودال اضافة التقفيلة زي حاسبة الكاش:
+  // نسيب الـ backdrop الجديد تحت المودال الأب علشان يفضل ظاهر
+  const backdrops = document.querySelectorAll(".modal-backdrop");
+  const currentBackdrop = backdrops[backdrops.length - 1];
+  if (currentBackdrop) currentBackdrop.classList.remove("card-amount-modal-backdrop");
+  amountInput.focus();
+});
+
+amountModalElement.addEventListener("hidden.bs.modal", function () {
+  const parentModal = document.getElementById("exampleModal");
+  if (parentModal && parentModal.classList.contains("show")) {
+    document.body.classList.add("modal-open");
+  }
+});
+
+[amountInput, repetitionInput].forEach((input) => {
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addAmount();
+    }
+  });
 });
 
 document.getElementById("Approval").addEventListener("click", function () {
-  const totalAmountValue = document.getElementById("totalAmount1").innerText;
+  document.getElementById("user_lock_span").value = cardTotalAmount.textContent;
+  updateOverallTotal();
+  bootstrap.Modal.getOrCreateInstance(amountModalElement).hide();
+});
 
-  if (totalAmountValue !== "0" && totalAmountValue !== "") {
-    document.getElementById("user_lock_span").value = totalAmountValue;
+renderAmounts();
 
-    const amountModal = new bootstrap.Modal(
-      document.getElementById("amountModal")
-    );
-    amountModal.hide();
+// Review modal cash calculator
+const reviewCashModalElement = document.getElementById("reviewCashCalculatorModal");
+const reviewCashTable = document.getElementById("reviewCashTable");
+const reviewCashTotal = document.getElementById("reviewCashTotal");
+let activeReviewCashInput = null;
+let activeReviewCashParent = null;
 
-    const amountModalInstance = bootstrap.Modal.getInstance(
-      document.getElementById("amountModal")
-    );
-    if (amountModalInstance) {
-      amountModalInstance.hide();
-    }
+function updateReviewCashTotal() {
+  let total = 0;
+  reviewCashTable.querySelectorAll("tr").forEach((row) => {
+    const quantity = parseFloat(row.querySelector("input").value) || 0;
+    const denomination = parseFloat(row.dataset.denomination) || 0;
+    const rowTotal = quantity * denomination;
+    row.querySelector(".review-cash-row-total").textContent = rowTotal.toFixed(2);
+    total += rowTotal;
+  });
+  reviewCashTotal.textContent = total.toFixed(2);
+}
 
-    const exampleModal = new bootstrap.Modal(document.getElementById("exampleModal"), {
-      backdrop: "static",
-      keyboard: false,
-    });
-    exampleModal.show();
-  } else {
-    alert("الرجاء التأكد من إدخال المبلغ قبل الاعتماد.");
+function resetReviewCashCalculator() {
+  reviewCashTable.querySelectorAll("input").forEach((input) => {
+    input.value = "0";
+  });
+  updateReviewCashTotal();
+}
+
+moneyDenominations.forEach((denomination) => {
+  const row = document.createElement("tr");
+  const quantityCell = document.createElement("td");
+  const denominationCell = document.createElement("td");
+  const totalCell = document.createElement("td");
+  const quantityInput = document.createElement("input");
+
+  row.dataset.denomination = String(denomination);
+  quantityInput.type = "number";
+  quantityInput.className = "form-control text-center";
+  quantityInput.value = "0";
+  quantityInput.min = "0";
+  quantityInput.step = "1";
+  quantityInput.inputMode = "numeric";
+  quantityInput.addEventListener("focus", function () {
+    this.select();
+  });
+  quantityInput.addEventListener("input", updateReviewCashTotal);
+  quantityInput.addEventListener("wheel", function (event) {
+    event.preventDefault();
+    this.blur();
+  });
+
+  denominationCell.textContent = String(denomination);
+  totalCell.textContent = "0.00";
+  totalCell.className = "review-cash-row-total";
+  quantityCell.appendChild(quantityInput);
+  row.appendChild(quantityCell);
+  row.appendChild(denominationCell);
+  row.appendChild(totalCell);
+  reviewCashTable.appendChild(row);
+});
+
+document.querySelectorAll(".lock-review-cash-trigger").forEach((button) => {
+  button.addEventListener("click", function () {
+    activeReviewCashParent = this.closest(".lock-review-modal");
+    activeReviewCashInput = activeReviewCashParent.querySelector(".lock-review-cash-input");
+    resetReviewCashCalculator();
+    bootstrap.Modal.getOrCreateInstance(reviewCashModalElement).show();
+  });
+});
+
+reviewCashModalElement.addEventListener("shown.bs.modal", function () {
+  const backdrops = document.querySelectorAll(".modal-backdrop");
+  const currentBackdrop = backdrops[backdrops.length - 1];
+  if (currentBackdrop) currentBackdrop.classList.add("card-amount-modal-backdrop");
+  const firstInput = reviewCashTable.querySelector("input");
+  if (firstInput) firstInput.focus();
+});
+
+reviewCashModalElement.addEventListener("hidden.bs.modal", function () {
+  if (activeReviewCashParent && activeReviewCashParent.classList.contains("show")) {
+    document.body.classList.add("modal-open");
   }
 });
+
+document.getElementById("reviewCashApprove").addEventListener("click", function () {
+  if (activeReviewCashInput) {
+    activeReviewCashInput.value = reviewCashTotal.textContent;
+    activeReviewCashInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  bootstrap.Modal.getOrCreateInstance(reviewCashModalElement).hide();
+});
+
+// Review modal card amount breakdown
+const reviewAmountModalElement = document.getElementById("reviewAmountModal");
+const reviewAmountInput = document.getElementById("reviewAmountInput");
+const reviewRepetitionInput = document.getElementById("reviewRepetitionInput");
+const reviewAmountList = document.getElementById("reviewAmountList");
+const reviewAmountCount = document.getElementById("reviewAmountCount");
+const reviewAmountTotal = document.getElementById("reviewAmountTotal");
+const reviewAmounts = [];
+let activeReviewCardInput = null;
+let activeReviewCardParent = null;
+
+function renderReviewAmounts() {
+  reviewAmountList.innerHTML = "";
+  const total = reviewAmounts.reduce((sum, amount) => sum + amount, 0);
+
+  if (reviewAmounts.length === 0) {
+    const emptyRow = document.createElement("tr");
+    const emptyCell = document.createElement("td");
+    emptyRow.className = "card-amount-empty";
+    emptyCell.colSpan = 3;
+    emptyCell.textContent = "لم تتم إضافة مبالغ بعد";
+    emptyRow.appendChild(emptyCell);
+    reviewAmountList.appendChild(emptyRow);
+  }
+
+  [...reviewAmounts].reverse().forEach((amount, index) => {
+    const originalIndex = reviewAmounts.length - 1 - index;
+    const row = document.createElement("tr");
+    const indexCell = document.createElement("td");
+    const amountCell = document.createElement("td");
+    const actionCell = document.createElement("td");
+    const removeButton = document.createElement("button");
+
+    indexCell.textContent = String(originalIndex + 1);
+    amountCell.textContent = amount.toFixed(2);
+    amountCell.setAttribute("dir", "ltr");
+    removeButton.type = "button";
+    removeButton.className = "card-amount-remove";
+    removeButton.setAttribute("aria-label", "حذف المبلغ");
+    removeButton.innerHTML = '<i class="bi bi-trash3"></i>';
+    removeButton.addEventListener("click", function () {
+      reviewAmounts.splice(originalIndex, 1);
+      renderReviewAmounts();
+    });
+
+    actionCell.appendChild(removeButton);
+    row.appendChild(indexCell);
+    row.appendChild(amountCell);
+    row.appendChild(actionCell);
+    reviewAmountList.appendChild(row);
+  });
+
+  reviewAmountCount.textContent = String(reviewAmounts.length);
+  reviewAmountTotal.textContent = total.toFixed(2);
+}
+
+function addReviewAmount() {
+  const value = parseFloat(reviewAmountInput.value);
+  let repetition = parseInt(reviewRepetitionInput.value || "1", 10);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    reviewAmountInput.focus();
+    return;
+  }
+  if (!Number.isInteger(repetition) || repetition < 1) repetition = 1;
+
+  for (let index = 0; index < repetition; index++) {
+    reviewAmounts.push(value);
+  }
+  reviewAmountInput.value = "";
+  reviewRepetitionInput.value = "";
+  renderReviewAmounts();
+  reviewAmountInput.focus();
+}
+
+document.querySelectorAll(".lock-review-card-trigger").forEach((button) => {
+  button.addEventListener("click", function () {
+    activeReviewCardParent = this.closest(".lock-review-modal");
+    activeReviewCardInput = activeReviewCardParent.querySelector(".lock-review-card-input");
+    reviewAmounts.splice(0, reviewAmounts.length);
+    const currentAmount = parseFloat(activeReviewCardInput.value) || 0;
+    if (currentAmount > 0) reviewAmounts.push(currentAmount);
+    reviewAmountInput.value = "";
+    reviewRepetitionInput.value = "";
+    renderReviewAmounts();
+    bootstrap.Modal.getOrCreateInstance(reviewAmountModalElement).show();
+  });
+});
+
+document.getElementById("reviewAmountAdd").addEventListener("click", addReviewAmount);
+[reviewAmountInput, reviewRepetitionInput].forEach((input) => {
+  input.addEventListener("keydown", function (event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addReviewAmount();
+    }
+  });
+});
+
+reviewAmountModalElement.addEventListener("shown.bs.modal", function () {
+  const backdrops = document.querySelectorAll(".modal-backdrop");
+  const currentBackdrop = backdrops[backdrops.length - 1];
+  if (currentBackdrop) currentBackdrop.classList.add("card-amount-modal-backdrop");
+  reviewAmountInput.focus();
+});
+
+reviewAmountModalElement.addEventListener("hidden.bs.modal", function () {
+  if (activeReviewCardParent && activeReviewCardParent.classList.contains("show")) {
+    document.body.classList.add("modal-open");
+  }
+});
+
+document.getElementById("reviewAmountApprove").addEventListener("click", function () {
+  if (activeReviewCardInput) {
+    activeReviewCardInput.value = reviewAmountTotal.textContent;
+    activeReviewCardInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  bootstrap.Modal.getOrCreateInstance(reviewAmountModalElement).hide();
+});
+
+renderReviewAmounts();
 document.addEventListener("keydown", function (e) {
   const isArrowUp = e.key === "ArrowUp";
   const isArrowDown = e.key === "ArrowDown" || e.key === "Enter";
@@ -253,6 +476,7 @@ document.addEventListener("keydown", function (e) {
     if (active.tagName === "INPUT") {
       const inputs = Array.from(document.querySelectorAll("#cashTable input"));
       const currentIndex = inputs.indexOf(active);
+      if (currentIndex === -1) return;
       const nextIndex = isArrowDown ? currentIndex + 1 : currentIndex - 1;
 
       if (inputs[nextIndex]) {

@@ -56,6 +56,22 @@
                             <?php } ?>
                         </span>
                     </div>
+                    <div class="box-content operations-info-item">
+                        <label>حالة المخزون الحالية</label>
+                        <span class="iteme">
+                            <?php if ($stock_state === 'in') { ?>
+                                <span class="operations-status-badge operations-status-stock-in">موجود في المخزون</span>
+                            <?php } elseif ($stock_state === 'out') { ?>
+                                <span class="operations-status-badge operations-status-stock-out">خرج من المخزون</span>
+                            <?php } else { ?>
+                                <span class="operations-status-badge operations-status-instock">غير متاح</span>
+                            <?php } ?>
+                        </span>
+                    </div>
+                    <div class="box-content operations-info-item">
+                        <label>نوع المخزون (Subinventory Code)</label>
+                        <span class="iteme"><?=htmlspecialchars(!empty($info['subinventory_code']) ? (string) $info['subinventory_code'] : 'غير متاح')?></span>
+                    </div>
                 <?php } ?>
             </div>
         </section>
@@ -101,7 +117,7 @@
                     <thead>
                         <tr>
                             <th>التاريخ</th>
-                            <th>طلب المبيعات</th>
+                            <th>طلب المبيعات / ملف المخزون</th>
                             <th>نوع العملية</th>
                             <th class="operation-movement-heading">العدد</th>
                             <th>تم بواسطة / البائع</th>
@@ -136,7 +152,7 @@
                                 $sales_order = 'غير محدد';
                             }
                         ?>
-                            <tr class="<?=$entry['source'] === 'sale' ? 'operations-row-sale' : ''?>">
+                            <tr class="<?=$entry['source'] === 'sale' ? 'operations-row-sale' : ($entry['source'] === 'stock' ? 'operations-row-stock' : '')?>">
                                 <td><?=htmlspecialchars($entry_date)?></td>
                                 <td><?=htmlspecialchars($sales_order)?></td>
                                 <td><?=htmlspecialchars($operation_label)?></td>

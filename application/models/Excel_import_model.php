@@ -2,6 +2,7 @@
 class Excel_import_model extends CI_Model
 {
  private $table = 'tbl_insert_excel';
+ private $last_inserted_records = array();
 
  function __construct()
  {
@@ -71,11 +72,17 @@ function select2() {
 }
 
 // Add New Feature
-public function get_employee_sold_devices($user_id) {
-    $this->db->select('insert_excel_id, insert_excel_date, insert_excel_ordern, insert_excel_new_ordern, insert_excel_description, insert_excel_product_serial_number, insert_excel_twasel, insert_excel_jowy, insert_excel_quickplus');
+public function get_employee_sold_devices($user_id, $from_date = null, $to_date = null) {
+    $this->db->select('insert_excel_id, insert_excel_date, insert_excel_ordern, insert_excel_new_ordern, insert_excel_description, insert_excel_product_serial_number, insert_excel_twasel, insert_excel_electronic, insert_excel_jowy, insert_excel_quickplus');
     $this->db->from($this->table);
     $this->db->where('insert_excel_uid', $user_id);
-    $this->db->where("(CAST(insert_excel_twasel AS DECIMAL(12,2)) > 0 OR CAST(insert_excel_jowy AS DECIMAL(12,2)) > 0 OR CAST(insert_excel_quickplus AS DECIMAL(12,2)) > 0)", null, false);
+    if (!empty($from_date)) {
+        $this->db->where('insert_excel_date >=', $from_date);
+    }
+    if (!empty($to_date)) {
+        $this->db->where('insert_excel_date <=', $to_date . ' 23:59:59');
+    }
+    $this->db->where("(CAST(insert_excel_twasel AS DECIMAL(12,2)) > 0 OR CAST(insert_excel_electronic AS DECIMAL(12,2)) > 0 OR CAST(insert_excel_jowy AS DECIMAL(12,2)) > 0 OR CAST(insert_excel_quickplus AS DECIMAL(12,2)) > 0)", null, false);
     $this->db->where("(insert_excel_ordern != '' OR insert_excel_new_ordern != '' OR insert_excel_description != '' OR insert_excel_product_serial_number != '')", null, false);
     $this->db->order_by('insert_excel_date', 'DESC');
     $this->db->order_by('insert_excel_id', 'DESC');
@@ -89,6 +96,9 @@ public function get_employee_sold_devices($user_id) {
         if ((float) $record['insert_excel_twasel'] > 0) {
             $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_twasel'];
             $records[$index]['insert_excel_sales_type'] = 'مبيعات تواصل';
+        } else if ((float) $record['insert_excel_electronic'] > 0) {
+            $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_electronic'];
+            $records[$index]['insert_excel_sales_type'] = 'مبيعات إلكترونية';
         } else if ((float) $record['insert_excel_jowy'] > 0) {
             $records[$index]['insert_excel_sales_amount'] = (float) $record['insert_excel_jowy'];
             $records[$index]['insert_excel_sales_type'] = 'مبيعات جوي';
@@ -334,6 +344,7 @@ public function selectall() {
 
  public function insert_erp_sales($data)
  {
+     $this->last_inserted_records = array();
      if (empty($data)) {
          return 0;
      }
@@ -424,11 +435,20 @@ public function selectall() {
      }
 
      if (!empty($filtered_data)) {
-         $this->db->insert_batch($this->table, $filtered_data);
+         $insert_result = $this->db->insert_batch($this->table, $filtered_data);
+         if ($insert_result === false) {
+             return 0;
+         }
+         $this->last_inserted_records = $filtered_data;
          return count($filtered_data);
      }
 
      return 0;
+ }
+
+ public function get_last_inserted_records()
+ {
+     return $this->last_inserted_records;
  }
  // End
  

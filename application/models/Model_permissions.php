@@ -67,6 +67,66 @@ class Model_permissions extends CI_Model {
         return $this->db->insert_id();
     }
 
+    /**
+     * Register application permissions that may not exist in older databases.
+     * Newly added permissions inherit the roles that already own the supplied
+     * parent permission, preserving existing access until an admin changes it.
+     */
+    function ensure_permissions($permissions, $inherit_from_key = null) {
+        if (!is_array($permissions) || empty($permissions)) {
+            return;
+        }
+
+        $inherited_role_ids = array();
+        if (!empty($inherit_from_key)) {
+            $parent_permission = $this->get_permission_by_key($inherit_from_key);
+            if (!empty($parent_permission['id'])) {
+                $this->db->select('role_id');
+                $this->db->distinct();
+                $this->db->from($this->roles_permissions_table);
+                $this->db->where('permission_id', (int) $parent_permission['id']);
+                $inherited_role_ids = array_column($this->db->get()->result_array(), 'role_id');
+            }
+        }
+
+        foreach ($permissions as $permission) {
+            if (empty($permission['key']) || $this->get_permission_by_key($permission['key'])) {
+                continue;
+            }
+
+            $this->db->query(
+                'INSERT IGNORE INTO `permissions` (`key`, `label`, `type`, `page_label`, `route`, `section_name`, `section_icon`) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                array(
+                    $permission['key'],
+                    isset($permission['label']) ? $permission['label'] : '',
+                    isset($permission['type']) ? $permission['type'] : 'special',
+                    isset($permission['page_label']) ? $permission['page_label'] : '',
+                    isset($permission['route']) ? $permission['route'] : '',
+                    isset($permission['section_name']) ? $permission['section_name'] : '',
+                    isset($permission['section_icon']) ? $permission['section_icon'] : '',
+                )
+            );
+
+            if ($this->db->affected_rows() < 1 || empty($inherited_role_ids)) {
+                continue;
+            }
+
+            $created_permission = $this->get_permission_by_key($permission['key']);
+            if (empty($created_permission['id'])) {
+                continue;
+            }
+
+            $role_permissions = array();
+            foreach ($inherited_role_ids as $role_id) {
+                $role_permissions[] = array(
+                    'role_id' => (int) $role_id,
+                    'permission_id' => (int) $created_permission['id'],
+                );
+            }
+            $this->db->insert_batch($this->roles_permissions_table, $role_permissions);
+        }
+    }
+
     function update_role($role_id, $role_name, $role_description) {
         $this->db->where('id', $role_id);
         $data = array(

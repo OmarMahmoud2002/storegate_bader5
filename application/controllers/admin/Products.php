@@ -16,6 +16,7 @@ class Products extends MY_Controller
         $this->load->model('Model_cart', 'Cart');
         $this->load->model('Model_shelves', 'Shelves');
         $this->load->model('Model_custody', 'Custodys');
+        $this->load->model('Model_return_requests', 'ReturnRequests');
         $this->load->model('Model_requests', 'Requests');
         $this->load->model('Model_sales', 'Sales');
         $this->load->model('Model_operations', 'Operations');
@@ -42,6 +43,11 @@ class Products extends MY_Controller
         if (isset($_FILES['excel_file'])) {
             try {
                 $filePath = $_FILES['excel_file']['tmp_name'];
+                $sourceFilename = isset($_FILES['excel_file']['name'])
+                    ? basename((string) $_FILES['excel_file']['name'])
+                    : '';
+                $uploadTimestamp = date('Y-m-d H:i:s');
+                $uploadedBy = $this->session->userdata('user_id');
                 $spreadsheet = IOFactory::load($filePath);
                 $sheet = $spreadsheet->getActiveSheet();
                 $rows = $sheet->toArray(null, true, true, true);
@@ -122,13 +128,22 @@ class Products extends MY_Controller
                         if (strtolower($item['serial_control']) === 'yes') {
                             // حذف السيريال من الجدول
                             $item_id = $item['id'];
-                            $this->Store->delete_store_item(
+                            $deletedRows = $this->Store->delete_store_item(
                                 array(
                                     'item_code' => $item['item_code'],
                                     'item_description' => $item['item_description'],
                                     'serial_number' => $item['serial_number']
                                 )
                             );
+                            if ($deletedRows > 0) {
+                                $this->Store->record_stock_movement(
+                                    $item,
+                                    'out',
+                                    $uploadTimestamp,
+                                    $uploadedBy,
+                                    $sourceFilename
+                                );
+                            }
 
                             $this->Cart->delete_cart_item(['item_id' => $item_id]);
                             $this->Store->remove_item_from_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode']);
@@ -186,12 +201,21 @@ class Products extends MY_Controller
                             'serial_number' => $data['serial_number'],
                             'quantity_total' => $data['quantity_total'],
                         );
-                        $this->Store->add_store_item($insertData);
+                        $insertedItemId = $this->Store->add_store_item($insertData);
+                        if ($insertedItemId && $data['serial_control'] === 'yes') {
+                            $this->Store->record_stock_movement(
+                                $insertData,
+                                'in',
+                                $uploadTimestamp,
+                                $uploadedBy,
+                                $sourceFilename
+                            );
+                        }
                     }
                 }
 
                 // نسجل وقت نجاح رفع ملف المخزون كحدث مستقل عن تعديلات المنتجات اليدوية.
-                $this->Settings->set_field('stock_excel_last_uploaded_at', date('Y-m-d H:i:s'));
+                $this->Settings->set_field('stock_excel_last_uploaded_at', $uploadTimestamp);
 
                 $uploadStatus = 'success';
                 $uploadMessage = "تم تحديث المخزون بنجاح!";
@@ -704,8 +728,6 @@ class Products extends MY_Controller
             return;
         }
 
-        $totalQuantity = $this->Store->get_store_unique_items_count(['i.item_code' => $item['item_code']]);
-
         $shelf_id = $this->Store->get_item_shelf($item['item_code'], $item['serial_number'], $item['barcode']);
         $shelf_name = 'غير موجود في رف';
 
@@ -891,12 +913,34 @@ class Products extends MY_Controller
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $custody_id = $this->input->post('custody_id');
             $custody = $this->Custodys->get_custody(['id' => $custody_id]);
+            if (empty($custody)) {
+                echo json_encode(['msg' => 'العهدة غير موجودة أو تم إرجاعها بالفعل', 'status' => 'wrong']);
+                return;
+            }
             $item = $this->Store->get_store_item(['item_code' => $custody['item_code'], 'serial_number' => $custody['serial_number'], 'barcode' => $custody['barcode']]);
 
-            $this->Custodys->delete_custody(['id' => $custody_id]);
-            $this->Sales->delete_sale(['custody_id' => $custody_id]);
+            $return_result = $this->Custodys->return_to_stock($custody_id);
+            if (!$return_result['status']) {
+                echo json_encode(['msg' => 'تعذر إرجاع المنتج، ربما تم إرجاعه بالفعل', 'status' => 'wrong']);
+                return;
+            }
 
-            if ($item['serial_control'] == 'yes') {
+            $auto_approved = $this->ReturnRequests->approve_pending_by_custody(
+                $custody_id,
+                (int) $this->session->userdata('user_id'),
+                'تمت الموافقة ضمن عملية الإرجاع المباشر من الإدارة'
+            );
+            if ($auto_approved > 0) {
+                $this->Notifications->add_notification(array(
+                    'user_id' => (int) $custody['user_id'],
+                    'description' => 'تمت الموافقة على طلب إرجاع العهدة وإعادتها إلى المخزون',
+                    'link' => base_url().MOD_VALUE.'user/custody#return-requests',
+                    'status' => 'unread',
+                    'date_created' => date('Y-m-d H:i:s'),
+                ));
+            }
+
+            if (!empty($item) && isset($item['serial_control']) && $item['serial_control'] == 'yes') {
                 $this->Operations->add_operation(['item_description' => $item['item_description'], 'item_code' => $item['item_code'], 'serial' => $item['serial_number'], 'operation' => 'تم ارجاع المنتج من عهدة ' . $this->Model_admin->get_user_by_id($custody['user_id'])['user_fillname'] . ' إلي المخزون', 'sales_order' => '0'], $this->session->userdata('user_id'));
             }
 
@@ -999,7 +1043,7 @@ class Products extends MY_Controller
         $number = strtoupper(trim((string) $number));
 
         if ($number === '') {
-            return ['name' => '', 'code' => ''];
+            return ['name' => '', 'code' => '', 'subinventory_code' => ''];
         }
 
         $serial_without_s = preg_replace('/^S/', '', $number, 1);
@@ -1025,6 +1069,7 @@ class Products extends MY_Controller
             return [
                 'name' => isset($item['item_description']) ? trim((string) $item['item_description']) : '',
                 'code' => isset($item['item_code']) ? trim((string) $item['item_code']) : '',
+                'subinventory_code' => isset($item['subinventory_code']) ? trim((string) $item['subinventory_code']) : '',
             ];
         }
 
@@ -1035,7 +1080,10 @@ class Products extends MY_Controller
                 : '',
             'code' => !empty($history_item['item_code'])
                 ? trim((string) $history_item['item_code'])
-                : ''
+                : '',
+            'subinventory_code' => !empty($history_item['subinventory_code'])
+                ? trim((string) $history_item['subinventory_code'])
+                : '',
         ];
 
         // New operation records retain the product identity even after stock refreshes.
@@ -1080,6 +1128,9 @@ class Products extends MY_Controller
             }
             if ($info['name'] === '' && !empty($matching_item['item_description'])) {
                 $info['name'] = trim((string) $matching_item['item_description']);
+            }
+            if ($info['subinventory_code'] === '' && !empty($matching_item['subinventory_code'])) {
+                $info['subinventory_code'] = trim((string) $matching_item['subinventory_code']);
             }
         }
 
@@ -1143,11 +1194,15 @@ class Products extends MY_Controller
 
         $this->check_permission('operations.view');
 
-        $this->data['info'] = ['name' => '', 'code' => ''];
+        $this->data['info'] = ['name' => '', 'code' => '', 'subinventory_code' => ''];
         $this->data['operations'] = [];
         $this->data['sales'] = [];
+        $this->data['stock_movements'] = [];
         $this->data['timeline'] = [];
         $this->data['last_sale'] = null;
+        $this->data['stock_entry'] = null;
+        $this->data['stock_exit'] = null;
+        $this->data['stock_state'] = 'unknown';
 
         $serial = trim((string) $this->input->get('serial'));
         $this->data['serial'] = $serial;
@@ -1163,6 +1218,7 @@ class Products extends MY_Controller
         // سجلات البيع المرفوعة من ملف التقفيلة
         $this->load->model('Excel_import_model');
         $sales = $this->Excel_import_model->get_sales_by_serial($serial);
+        $stock_movements = $this->Store->get_stock_movements_by_number($serial);
 
         if ($operations != null) {
             $this->data['serial'] = $operations[0]['serial'];
@@ -1171,12 +1227,25 @@ class Products extends MY_Controller
         }
 
         $info = $this->get_item_info_by_number($this->data['serial'], $operations, $sales);
+        if ($info['subinventory_code'] === '') {
+            foreach ($stock_movements as $stock_movement) {
+                if (!empty($stock_movement['subinventory_code'])) {
+                    $info['subinventory_code'] = trim((string) $stock_movement['subinventory_code']);
+                    break;
+                }
+            }
+        }
 
         $this->data['info'] = $info;
         $this->data['operations'] = $operations;
         $this->data['sales'] = $sales;
+        $this->data['stock_movements'] = $stock_movements;
         $this->data['last_sale'] = count($sales) > 0 ? $this->format_sale_entry($sales[0]) : null;
-        $this->data['timeline'] = $this->build_operations_timeline($operations, $sales);
+        $stock_lifecycle = $this->build_stock_lifecycle($stock_movements);
+        $this->data['stock_entry'] = $stock_lifecycle['entry'];
+        $this->data['stock_exit'] = $stock_lifecycle['exit'];
+        $this->data['stock_state'] = $stock_lifecycle['state'];
+        $this->data['timeline'] = $this->build_operations_timeline($operations, $sales, $stock_movements);
 
         $this->load->view('view_admin_operations', $this->data);
     }
@@ -1206,9 +1275,43 @@ class Products extends MY_Controller
     }
 
     /**
-     * يدمج عمليات المخزون مع سجلات البيع في سجل واحد مرتب من الأحدث للأقدم.
+     * Returns the latest inventory-file cycle for the serial.
      */
-    private function build_operations_timeline($operations, $sales)
+    private function build_stock_lifecycle($stock_movements)
+    {
+        $result = array(
+            'entry' => null,
+            'exit' => null,
+            'state' => 'unknown',
+        );
+
+        if (count($stock_movements) === 0) {
+            return $result;
+        }
+
+        $latest = $stock_movements[0];
+        $result['state'] = $latest['movement_type'] === 'in' ? 'in' : 'out';
+
+        if ($result['state'] === 'in') {
+            $result['entry'] = $latest;
+            return $result;
+        }
+
+        $result['exit'] = $latest;
+        foreach ($stock_movements as $movement) {
+            if ($movement['movement_type'] === 'in') {
+                $result['entry'] = $movement;
+                break;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * يدمج عمليات المخزون والمبيعات وحركات ملفات المخزون في سجل زمني واحد.
+     */
+    private function build_operations_timeline($operations, $sales, $stock_movements = array())
     {
         $timeline = [];
 
@@ -1250,6 +1353,30 @@ class Products extends MY_Controller
                 'user_name' => $entry['employee_name'],
                 'sales_type' => $entry['sales_type'],
                 'sales_amount' => $entry['sales_amount'],
+            ];
+        }
+
+        foreach ($stock_movements as $stock_movement) {
+            $is_entry = $stock_movement['movement_type'] === 'in';
+            $uploaded_by = !empty($stock_movement['uploaded_by'])
+                ? $this->Model_admin->get_user_by_id($stock_movement['uploaded_by'])
+                : null;
+            $source_filename = trim((string) $stock_movement['source_filename']);
+
+            $timeline[] = [
+                'source' => 'stock',
+                'date' => $stock_movement['occurred_at'],
+                'sort_id' => isset($stock_movement['id']) ? (int) $stock_movement['id'] : 0,
+                'sales_order' => $source_filename,
+                'operation' => $is_entry
+                    ? 'دخول المنتج إلى المخزون من ملف المخزون'
+                    : 'خروج المنتج من المخزون لعدم وجوده في ملف المخزون',
+                'movement' => $is_entry ? '1' : '-1',
+                'user_name' => !empty($uploaded_by['user_fillname'])
+                    ? $uploaded_by['user_fillname']
+                    : 'تهيئة النظام',
+                'sales_type' => '',
+                'sales_amount' => 0,
             ];
         }
 

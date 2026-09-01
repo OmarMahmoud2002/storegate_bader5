@@ -7,8 +7,23 @@ $(".products-row .actions .edit-btn").click(()=>{
 })
 
 $('.del-btn').click((event) => {
+    var deleteButton = $(event.currentTarget);
 
-    var itemID = $(event.target).parent().parent().attr('id');
+    // Buttons that already open a themed confirmation modal must not also
+    // trigger the legacy browser confirmation used by product rows.
+    if (
+        deleteButton.is('[data-bs-toggle="modal"], [data-toggle="modal"]') ||
+        deleteButton.attr('data-bs-target') ||
+        deleteButton.attr('data-target')
+    ) {
+        return;
+    }
+
+    var itemID = deleteButton.closest('.products-row').attr('id');
+    if (!itemID) {
+        return;
+    }
+
     if (confirm('هل تريد حذف المنتج ؟')) {
         $.get('./delete_product?id=' + itemID, () => {
             window.location = window.location.href

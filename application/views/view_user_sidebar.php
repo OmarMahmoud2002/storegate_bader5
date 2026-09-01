@@ -36,9 +36,9 @@ $segment_2 = $CI->uri->segment('2');
         <ul class="list-unstyled">
             <?php foreach($notifications as $notification) { ?>
                 <li class='<?php  echo $notification->status?> noti' id = '<?=$notification->id?>'>
-                    <a>
+                    <a href="<?php echo htmlspecialchars((string) $notification->link, ENT_QUOTES, 'UTF-8'); ?>">
                     <h4>
-                        <?=$notification->description?>
+                        <?php echo htmlspecialchars((string) $notification->description, ENT_QUOTES, 'UTF-8'); ?>
                     </h4>
                     <p class="n"><?=$notification->date_created?></p>
                     </a>
@@ -51,7 +51,7 @@ $segment_2 = $CI->uri->segment('2');
         </ul>
       </div>
     </div>
-    <a href="./index.html" class="logo">
+    <a href="<?php echo base_url().MOD_VALUE.'user/products'; ?>" class="logo">
       <img src="https://upload.wikimedia.org/wikipedia/commons/8/85/Logo-Test.png" />
     </a>
     <div class="toggle_menu">
@@ -66,6 +66,12 @@ $segment_2 = $CI->uri->segment('2');
           <a href="<?php echo base_url().MOD_VALUE.'user/products'; ?>">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-shopping-bag"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
             <span>المنتجات المباعة</span>
+          </a>
+        </li>
+        <li class="sidebar-list-item <?php if($segment_2 == 'custody') {echo 'active';} ?>">
+          <a href="<?php echo base_url().MOD_VALUE.'user/custody'; ?>">
+            <i class="bi bi-briefcase"></i>
+            <span>العهد</span>
           </a>
         </li>
         <li class="sidebar-list-item <?php if($segment_2 == 'lock') {echo 'active';} ?>">

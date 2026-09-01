@@ -11,7 +11,73 @@ class Excel_import extends CI_Controller
   parent::__construct();
   $this->load->model('Excel_import_model');
   $this->load->model('Model_admin');
+  $this->load->model('Model_custody', 'Custody');
+  $this->load->model('Model_return_requests', 'ReturnRequests');
+  $this->load->model('Model_notifications', 'Notifications');
+  $this->load->model('Model_operations', 'Operations');
   
+ }
+
+ private function sync_inserted_sales_with_custody()
+ {
+     $inserted_records = $this->Excel_import_model->get_last_inserted_records();
+     if (empty($inserted_records)) {
+         return;
+     }
+
+     // Excel_import extends CI_Controller, so the MOD_VALUE constant that the
+     // admin/user controllers rely on is not defined for this request.
+     $mod_value = $this->config->item('mod_rewrite') == 'Off' ? 'index.php/' : '';
+
+     foreach ($inserted_records as $record) {
+         $serial = isset($record['insert_excel_product_serial_number'])
+             ? trim((string) $record['insert_excel_product_serial_number'])
+             : '';
+         if ($serial === '') {
+             continue;
+         }
+
+         $custody = $this->Custody->get_custody_by_number($serial);
+         if (empty($custody)) {
+             continue;
+         }
+
+         $return_result = $this->Custody->return_to_stock((int) $custody['id']);
+         if (!$return_result['status']) {
+             continue;
+         }
+
+         $seller_id = isset($record['insert_excel_uid']) ? (int) $record['insert_excel_uid'] : 0;
+         $seller = $seller_id > 0 ? $this->Model_admin->get_user_by_id($seller_id) : array();
+         $seller_name = !empty($seller['user_fillname']) ? $seller['user_fillname'] : 'الموظف المسجل في ملف المبيعات';
+         $description = !empty($record['insert_excel_description'])
+             ? trim((string) $record['insert_excel_description'])
+             : $custody['item_code'];
+         $resolution_note = 'تم إغلاق الطلب تلقائيًا بعد تسجيل بيع المنتج بواسطة ' . $seller_name;
+
+         $this->ReturnRequests->resolve_pending_as_sold((int) $custody['id'], $resolution_note);
+         $this->Notifications->add_notification(array(
+             'user_id' => (int) $custody['user_id'],
+             'description' => 'تم تسجيل بيع العهدة ' . $serial . ' بواسطة ' . $seller_name . ' وإزالتها من عهدتك',
+             'link' => base_url() . $mod_value . 'user/custody#return-requests',
+             'status' => 'unread',
+             'date_created' => date('Y-m-d H:i:s'),
+         ));
+
+         $made_by = (int) $this->session->userdata('user_id');
+         if ($made_by <= 0) {
+             $made_by = $seller_id;
+         }
+         $custody_holder = $this->Model_admin->get_user_by_id((int) $custody['user_id']);
+         $custody_holder_name = !empty($custody_holder['user_fillname']) ? $custody_holder['user_fillname'] : 'موظف غير متاح';
+         $this->Operations->add_operation(array(
+             'serial' => $serial,
+             'item_code' => $custody['item_code'],
+             'item_description' => $description,
+             'operation' => 'تم تسجيل المنتج كمباع بواسطة ' . $seller_name . ' وإزالته من عهدة ' . $custody_holder_name,
+             'sales_order' => !empty($record['insert_excel_new_ordern']) ? $record['insert_excel_new_ordern'] : $record['insert_excel_ordern'],
+         ), $made_by);
+     }
  }
 
  private function getCellByZeroBasedColumn($worksheet, $columnIndex, $row)
@@ -215,6 +281,7 @@ function import()
                 // Add New Feature
                 $inserted_count = $this->Excel_import_model->insert($data);
                 if ($inserted_count > 0) {
+                    $this->sync_inserted_sales_with_custody();
                     $success = "تم الحفظ بنجاح";
                     $this->session->set_flashdata('success', $success);
                 } else {
@@ -313,6 +380,7 @@ function import_erp()
             if (count($data) > 0) {
                 $inserted_count = $this->Excel_import_model->insert_erp_sales($data);
                 if ($inserted_count > 0) {
+                    $this->sync_inserted_sales_with_custody();
                     $this->session->set_flashdata('success', 'تم حفظ بيانات ERP بنجاح');
                 } else {
                     $this->session->set_flashdata('error', 'لا توجد بيانات ERP جديدة، قد تكون البيانات مكررة');

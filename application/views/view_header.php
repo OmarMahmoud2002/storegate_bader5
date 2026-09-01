@@ -5,11 +5,11 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $error_message = '';
 $success_message = '';
 $header_CI =& get_instance();
-$is_admin_shell = ($header_CI->uri->segment(1) === 'admin');
+$is_admin_shell = in_array($header_CI->uri->segment(1), array('admin', 'user'), true);
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo $is_admin_shell ? 'ar' : 'en'; ?>"<?php echo $is_admin_shell ? ' dir="rtl"' : ''; ?>>
 
 <head>
     <meta charset="utf-8">

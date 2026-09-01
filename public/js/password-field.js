@@ -101,7 +101,7 @@ $(document).on('click', '.password-toggle-edit', function () {
     if (isHidden) {
         label.text('إلغاء تعديل كلمة السر');
         icon.attr('class', 'bi bi-x-circle');
-        const firstField = panel.querySelector('.password-edit-current');
+        const firstField = panel.querySelector('.password-edit-current, .password-edit-new');
         if (firstField) {
             firstField.focus();
         }
@@ -124,22 +124,25 @@ $(document).on('submit', 'form', function (event) {
         return;
     }
 
-    const oldVal = panel.find('.password-edit-current').val().trim();
-    const newVal = panel.find('.password-edit-new').val().trim();
-    const confirmVal = panel.find('.password-edit-confirm').val().trim();
+    const oldField = panel.find('.password-edit-current');
+    const newField = panel.find('.password-edit-new');
+    const confirmField = panel.find('.password-edit-confirm');
+    const oldVal = oldField.length ? oldField.val().trim() : '';
+    const newVal = newField.length ? newField.val().trim() : '';
+    const confirmVal = confirmField.length ? confirmField.val().trim() : '';
     const anyFilled = oldVal || newVal || confirmVal;
 
     if (!anyFilled) {
         return;
     }
 
-    if (!oldVal || !newVal || !confirmVal) {
+    if (!newVal || (oldField.length && !oldVal) || (confirmField.length && !confirmVal)) {
         event.preventDefault();
         showPasswordFieldToast('error', 'يجب إدخال كلمة السر القديمة والجديدة وتأكيدها');
         return;
     }
 
-    if (newVal !== confirmVal) {
+    if (confirmField.length && newVal !== confirmVal) {
         event.preventDefault();
         showPasswordFieldToast('error', 'كلمة السر الجديدة وتأكيدها غير متطابقين');
     }

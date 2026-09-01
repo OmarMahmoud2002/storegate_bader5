@@ -345,20 +345,66 @@ $(".toggle_menu").keydown(function(e){
 $(window).on("resize", restoreAdminSidebarState);
 
 // Notifications
-$('.del-notification').click((event) => {
-    var noti_id = $(event.target).closest('.noti').attr('id');
-    $.post('/notifications/delete-notification', {noti_id: noti_id}, (data) => {
+// The unread badge is driven by the number of `.noti.unread` rows still on screen,
+// so deleting and reading a notification both stay in sync without separate counters.
+function refreshNotificationCount() {
+    var unread = $('.noti.unread').length;
+    var badge = $('.notificationcount');
+
+    if (unread === 0) {
+        badge.remove();
+        return;
+    }
+
+    if (badge.length === 0) {
+        $('nav .notification .top_noti').append('<p class="new n notificationcount">' + unread + '</p>');
+    } else {
+        badge.text(unread);
+    }
+}
+
+// These are delegated from `.down_notif` rather than from `document` on purpose:
+// the dropdown calls stopPropagation() on its own clicks to stay open, so a
+// document-level delegate would never receive them.
+var notificationPanel = 'nav .notification .down_notif';
+
+$(notificationPanel).on('click', '.del-notification', function (event) {
+    event.preventDefault();
+
+    var noti = $(this).closest('.noti');
+    $.post('/notifications/delete-notification', {noti_id: noti.attr('id')}, function (data) {
         if (data == 'deleted') {
-            $(event.target).closest('.noti').remove();
-            let new_count = parseInt($('.notificationcount').text()) - 1;
-            if (new_count == 0) {
-                $('.notificationcount').remove()
-            } else {
-                $('.notificationcount').text(new_count);
-            }
+            noti.remove();
+            refreshNotificationCount();
         }
-    })
-})
+    });
+});
+
+// Opening a notification marks it read, so the bell stops advertising something
+// the user has already seen. The badge only clears once the server confirms;
+// navigation happens either way so a failed request never traps the user.
+$(notificationPanel).on('click', '.noti > a', function (event) {
+    var noti = $(this).closest('.noti');
+    var href = $(this).attr('href');
+    var target = (href && href !== '#') ? href : '';
+
+    if (!noti.hasClass('unread')) {
+        return;
+    }
+
+    event.preventDefault();
+
+    $.post('/notifications/mark-read', {noti_id: noti.attr('id')})
+        .done(function () {
+            noti.removeClass('unread').addClass('read');
+            refreshNotificationCount();
+        })
+        .always(function () {
+            if (target) {
+                window.location.href = target;
+            }
+        });
+});
 //
 if($(window).width()<=997){
   $(".products-area-wrapper").removeClass("tableView").addClass("gridView");

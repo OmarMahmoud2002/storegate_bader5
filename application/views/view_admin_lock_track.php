@@ -1,7 +1,5 @@
 <title>تأكيد التقفيلة</title>
 <?php $this->view('view_header'); ?>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
-
  <?php
 $CI =& get_instance();
 $CI->load->model('Model_admin');
@@ -82,27 +80,37 @@ $can_delete = $CI->get_permission_enabled('lock_track.delete');
 
             <!-- Valid -->
             <?php if ($can_edit): ?>
-            <div class="modal fade" id="myModal<?php echo safe_data($i); ?>" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+            <div class="modal fade lock-review-modal" id="myModal<?php echo safe_data($i); ?>" tabindex="-1" role="dialog" aria-labelledby="myModalLabel<?php echo safe_data($i); ?>" aria-hidden="true">
   <div class="modal-dialog" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <div>
-          <h5 class="modal-title" id="myModalLabel">مراجعة التقفيلة: <span><?php echo safe_data($user_name); ?></span></h5>
+          <h5 class="modal-title" id="myModalLabel<?php echo safe_data($i); ?>">مراجعة التقفيلة: <span><?php echo safe_data($user_name); ?></span></h5>
         </div>
         <div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
       </div>
       <div class="modal-body">
-        <?php echo form_open(base_url().MOD_VALUE.'admin/edit_lock', array('class' => '')); ?>
+        <?php echo form_open(base_url().MOD_VALUE.'admin/edit_lock', array('class' => 'lock-review-form')); ?>
         <input name="user_lock_id" type="hidden" value="<?php echo safe_data($row['user_lock_id']); ?>">
-        <div class="form-group mb-3">
-          <label>المبلغ كاش</label>
-          <input type="text" name="user_lock_cash" value="<?php echo safe_data($row['user_lock_cash']); ?>" class="form-control">
+        <div class="form-group mb-3 lock-review-field">
+          <div class="lock-review-field__heading">
+            <label for="reviewCash<?php echo safe_data($i); ?>">المبلغ كاش (نقدي)</label>
+            <button type="button" class="card-amount-trigger lock-review-cash-trigger" aria-label="فتح حاسبة الكاش" title="حاسبة الكاش">
+              <i class="bi bi-calculator"></i>
+            </button>
+          </div>
+          <input type="number" name="user_lock_cash" id="reviewCash<?php echo safe_data($i); ?>" value="<?php echo safe_data($row['user_lock_cash']); ?>" class="form-control number lock-review-cash-input" min="0" step="0.01" inputmode="decimal">
         </div>
-        <div class="form-group mb-3">
-          <label>المبلغ بطاقة</label>
-          <input type="text" name="user_lock_span" value="<?php echo safe_data($row['user_lock_span']); ?>" class="form-control">
+        <div class="form-group mb-3 lock-review-field">
+          <div class="lock-review-field__heading">
+            <label for="reviewCard<?php echo safe_data($i); ?>">المبلغ بطاقة</label>
+            <button type="button" class="card-amount-trigger lock-review-card-trigger" aria-label="إضافة مبالغ البطاقة بالتفصيل" title="إضافة مبالغ البطاقة بالتفصيل">
+              <i class="bi bi-credit-card"></i>
+            </button>
+          </div>
+          <input type="number" name="user_lock_span" id="reviewCard<?php echo safe_data($i); ?>" value="<?php echo safe_data($row['user_lock_span']); ?>" class="form-control number lock-review-card-input" min="0" step="0.01" inputmode="decimal">
         </div>
       </div>
       <div class="modal-footer">
@@ -313,7 +321,7 @@ $can_delete = $CI->get_permission_enabled('lock_track.delete');
           <div class="lock-modal-fields">
           <div class="mb-3">
             <label for="datepicker">التاريخ</label>
-            <input type="date" class="form-control" id="user_lock_time" name = 'user_lock_time' placeholder="dd-mm-yyyy" required>
+            <input type="date" class="form-control" id="user_lock_time" name="user_lock_time" value="<?php echo date('Y-m-d'); ?>" max="<?php echo date('Y-m-d'); ?>" required autocomplete="off">
 
           </div>
           <div class="mb-3">
@@ -364,8 +372,8 @@ $can_delete = $CI->get_permission_enabled('lock_track.delete');
               <div class="mb-3">
                 <label for="user_lock_span" class = 'form-label d-flex align-items-center'>
                   <span>المبلغ بطاقة</span>
-                  <button type="button" class="btn btn-sm btn-outline-secondary p-1 ms-2 m-2"
-                    data-bs-toggle="modal" data-bs-target="#amountModal">
+                  <button type="button" class="btn btn-sm btn-outline-secondary p-1 ms-2 m-2 card-amount-trigger"
+                    id="openCardAmountPopup" aria-label="إضافة مبالغ البطاقة بالتفصيل" title="إضافة مبالغ البطاقة بالتفصيل">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
                       class="bi bi-credit-card" viewBox="0 0 16 16">
                       <path
@@ -429,7 +437,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <!-- Modal حاسبة الكاش (popup صغير) -->
-<div class="modal fade modal-sm " id="cashCalculatorModal" tabindex="-1" aria-labelledby="cashCalculatorLabel"
+<div class="modal fade modal-sm cash-tool-modal" id="cashCalculatorModal" tabindex="-1" aria-labelledby="cashCalculatorLabel"
   aria-hidden="true">
   <!-- Modal حاسبة الكاش -->
   <div class="modal-dialog modal-md modal-dialog-scrollable" style="max-width: 300px;">
@@ -474,59 +482,183 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 </div>
 
-
-
-<!-- Modal Content -->
-<div class="modal fade" id="amountModal" tabindex="-1" aria-labelledby="amountModalLabel" aria-hidden="true">
-<div class="modal-dialog modal-m " style="max-width: 350px;">
-  <div class="modal-content">
-    <div class="modal-header d-flex justify-content-between">
-      <div>
-        <h5 class="modal-title" id="amountModalLabel">إضافة مبلغ</h5>
-      </div>
-      <div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button></div>
-    </div>
-    <div class="modal-body">
-      <!-- محتوى المودال -->
-      <div class="container bg-white p-4 rounded shadow" style="max-width: 350px;">
-        <label for="amountInput" class="form-label">إضافة مبلغ</label>
-        <div class = 'd-flex' style = 'gap: 20px'>
-          <input type = "text" id="amountInput" class="form-control mb-3" placeholder="أدخل مبلغًا">
-          <input type = "text" id="repetitionInput" class="form-control mb-3 w-25" placeholder="X" style = 'text-align: center'>
+<!-- حاسبة الكاش الخاصة بمراجعة التقفيلة -->
+<div class="modal fade cash-tool-modal lock-review-tool-modal" id="reviewCashCalculatorModal" tabindex="-1" aria-labelledby="reviewCashCalculatorLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header d-flex justify-content-between">
+        <div class="card-amount-modal__title">
+          <span><i class="bi bi-calculator"></i></span>
+          <div>
+            <h5 class="modal-title" id="reviewCashCalculatorLabel">حاسبة الكاش</h5>
+            <p>أدخل عدد الأوراق أو العملات لكل فئة.</p>
+          </div>
         </div>
-        
-        <button class="btn btn-info w-100 mb-3 text-white" onclick="addAmount()">إضافة مبلغ</button>
-        <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
-          <table class="table table-bordered text-center">
-            <thead class="table-light sticky-top bg-white"></thead>
-            <tr>
-              <th>#</th>
-              <th>المبلغ</th>
-              <th>حذف</th>
-            </tr>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="cash-tool-table-wrap">
+          <table class="table text-center mb-0">
+            <thead>
+              <tr>
+                <th>العدد</th>
+                <th>فئة الريال</th>
+                <th>المجموع</th>
+              </tr>
             </thead>
-            <tbody id="amountList">
-              <!-- سيتم تعبئة الجدول هنا ديناميكيًا -->
-            </tbody>
+            <tbody id="reviewCashTable"></tbody>
           </table>
         </div>
-        <table class="table table-bordered text-center mt-2">
-          <tfoot class="table-light">
-            <tr>
-              <td colspan="2" class="text-right">عدد المبالغ:</td>
-              <td id="amountCount" class="footer-value bg-info">0</td>
-            </tr>
-            <tr>
-              <td colspan="2" class="text-right">إجمالي المبلغ:</td>
-              <td id="totalAmount1" class="footer-value bg-info">0</td>
-            </tr>
-          </tfoot>
-        </table>
-        <button onclick="esc()" id="Approval" class="btn btn-info w-100 mt-3 text-white">اعتماد المبلغ</button>
+      </div>
+      <div class="modal-footer cash-tool-actions">
+        <div class="cash-tool-total">
+          <span>الإجمالي</span>
+          <strong id="reviewCashTotal" dir="ltr">0.00</strong>
+        </div>
+        <button type="button" class="card-amount-cancel" data-bs-dismiss="modal">إغلاق</button>
+        <button type="button" class="card-amount-approve" id="reviewCashApprove">
+          <i class="bi bi-check2-circle"></i>
+          اعتماد المبلغ
+        </button>
       </div>
     </div>
   </div>
 </div>
+
+<!-- تفاصيل البطاقة الخاصة بمراجعة التقفيلة -->
+<div class="modal fade card-amount-modal lock-review-tool-modal" id="reviewAmountModal" tabindex="-1" aria-labelledby="reviewAmountModalLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="card-amount-modal__title">
+          <span><i class="bi bi-credit-card-2-front"></i></span>
+          <div>
+            <h5 class="modal-title" id="reviewAmountModalLabel">تفاصيل مبالغ البطاقة</h5>
+            <p>أضف كل عملية منفصلة أو حدّد عدد مرات تكرارها.</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+      </div>
+      <div class="modal-body">
+        <div class="card-amount-entry">
+          <label for="reviewAmountInput">
+            <span>المبلغ</span>
+            <input type="number" id="reviewAmountInput" class="form-control" placeholder="0.00" min="0" step="0.01" inputmode="decimal">
+          </label>
+          <label for="reviewRepetitionInput" class="card-amount-entry__repeat">
+            <span>التكرار</span>
+            <input type="number" id="reviewRepetitionInput" class="form-control" placeholder="1" min="1" step="1" inputmode="numeric">
+          </label>
+          <button type="button" class="card-amount-add" id="reviewAmountAdd">
+            <i class="bi bi-plus-lg"></i>
+            إضافة
+          </button>
+        </div>
+
+        <div class="card-amount-list">
+          <div class="table-responsive">
+            <table class="table text-center">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>المبلغ</th>
+                  <th>حذف</th>
+                </tr>
+              </thead>
+              <tbody id="reviewAmountList"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card-amount-summary">
+          <div>
+            <span>عدد المبالغ</span>
+            <strong id="reviewAmountCount">0</strong>
+          </div>
+          <div>
+            <span>إجمالي المبالغ</span>
+            <strong id="reviewAmountTotal" dir="ltr">0.00</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer card-amount-actions">
+        <button type="button" class="card-amount-cancel" data-bs-dismiss="modal">إغلاق</button>
+        <button type="button" id="reviewAmountApprove" class="card-amount-approve">
+          <i class="bi bi-check2-circle"></i>
+          اعتماد المبلغ
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- Modal Content -->
+<div class="modal fade card-amount-modal" id="amountModal" tabindex="-1" aria-labelledby="amountModalLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="card-amount-modal__title">
+          <span><i class="bi bi-credit-card-2-front"></i></span>
+          <div>
+            <h5 class="modal-title" id="amountModalLabel">تفاصيل مبالغ البطاقة</h5>
+            <p>أضف كل عملية منفصلة أو حدّد عدد مرات تكرارها.</p>
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+      </div>
+      <div class="modal-body">
+        <div class="card-amount-entry">
+          <label for="amountInput">
+            <span>المبلغ</span>
+            <input type="number" id="amountInput" class="form-control" placeholder="0.00" min="0" step="0.01" inputmode="decimal">
+          </label>
+          <label for="repetitionInput" class="card-amount-entry__repeat">
+            <span>التكرار</span>
+            <input type="number" id="repetitionInput" class="form-control" placeholder="1" min="1" step="1" inputmode="numeric">
+          </label>
+          <button type="button" class="card-amount-add" onclick="addAmount()">
+            <i class="bi bi-plus-lg"></i>
+            إضافة
+          </button>
+        </div>
+
+        <div class="card-amount-list">
+          <div class="table-responsive">
+            <table class="table text-center">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>المبلغ</th>
+                  <th>حذف</th>
+                </tr>
+              </thead>
+              <tbody id="amountList"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card-amount-summary">
+          <div>
+            <span>عدد المبالغ</span>
+            <strong id="amountCount">0</strong>
+          </div>
+          <div>
+            <span>إجمالي المبالغ</span>
+            <strong id="totalAmount1" dir="ltr">0.00</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer card-amount-actions">
+        <button type="button" class="card-amount-cancel" data-bs-dismiss="modal">إغلاق</button>
+        <button type="button" id="Approval" class="card-amount-approve">
+          <i class="bi bi-check2-circle"></i>
+          اعتماد المبلغ
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <?php $this->view('view_footer'); ?>
@@ -535,20 +667,6 @@ document.addEventListener('DOMContentLoaded', function () {
 <script src="<?php echo base_url(); ?>public/js/script.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 <script src="<?php echo base_url(); ?>public/js/home.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 
-
-<script>
-
-    
-$(function() {
-    $('input[name="user_lock_time"]').daterangepicker({
-        singleDatePicker: true,
-        showDropdowns: true,
-        locale: {
-          format: 'YYYY-MM-DD' // تنسيق التاريخ
-        }
-    });
-});
-</script>
 
 <script>
 jQuery(function($) {

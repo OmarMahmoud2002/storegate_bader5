@@ -79,7 +79,7 @@ $can_stocktaking = $CI->get_permission_enabled('stocktaking.view');
       </div>
       <ul class="down_profile list-unstyled">
         <li>
-          <a href="#">
+          <a href="<?php echo base_url().MOD_VALUE; ?>admin/profile">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z"/></svg>
             ملف التعريف
           </a>
@@ -103,9 +103,9 @@ $can_stocktaking = $CI->get_permission_enabled('stocktaking.view');
         <ul class="list-unstyled">
             <?php foreach($notifications as $notification) { ?>
                 <li class='<?php  echo $notification->status?> noti' id = '<?=$notification->id?>'>
-                    <a href = '<?=$notification->link?>'>
+                    <a href="<?php echo htmlspecialchars((string) $notification->link, ENT_QUOTES, 'UTF-8'); ?>">
                     <h4>
-                        <?=$notification->description?>
+                        <?php echo htmlspecialchars((string) $notification->description, ENT_QUOTES, 'UTF-8'); ?>
                     </h4>
                     <p class="n"><?=date_format(date_create($notification->date_created), 'Y/m/d h:i:s A')?></p>
                     </a>

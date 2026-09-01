@@ -1,6 +1,13 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
 class User extends MY_Controller {
 
 	function __construct()
@@ -14,12 +21,13 @@ class User extends MY_Controller {
         $this->load->model('Model_requests', 'Requests');
         $this->load->model('Model_notifications', 'Notifications');
 		$this->load->model('Model_custody', 'Custody');
+        $this->load->model('Model_return_requests', 'ReturnRequests');
         $this->notifications();
     }
 
     private function notifications() {
         $notifications = $this->Notifications->get_notifications(array('user_id' => $this->session->userdata('user_id')));
-        $this->data['notifications'] = $notifications;
+        $this->data['notifications'] = array_reverse($notifications);
         $this->data['notifications_count'] = $this->Notifications->get_notifications_length(
 			array(
 				'status' => 'unread', 
@@ -100,70 +108,298 @@ class User extends MY_Controller {
 		if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
 		    redirect(base_url());
 		}
-		
-		$fromdate = $this->input->get('from_date');
-		$todate = $this->input->get('to_date');
 
-		if (empty($fromdate)) {
-			$fromdate = date('Y-m-d H:i:s');
-		}
+		$date_range = $this->get_sold_devices_date_range();
+		$sold_devices = $this->Excel_import_model->get_employee_sold_devices(
+			$this->session->userdata('user_id'),
+			$date_range['from_date'],
+			$date_range['to_date']
+		);
 
-		if (empty($todate)) {
-			$todate = date('Y-m-d 23:59:59');
-		} else {
-			$todate = date('Y-m-d 23:59:59', strtotime($todate));
-		}
-
-
-		$user_custodies = $this->Custody->get_custodys(['user_id' => $this->session->userdata('user_id'), 'date_created >=' => $fromdate, 'date_created <=' => $todate]);
-		$this->data['user_products'] = $user_custodies;
-		$this->data['fromdate'] = $fromdate;
-		$this->data['todate'] = $todate;
+		$this->data['sold_devices'] = $sold_devices;
+		$this->data['fromdate'] = $date_range['from_date'];
+		$this->data['todate'] = $date_range['to_date'];
+		$this->data['page_title'] = 'الأجهزة المباعة';
 
 		$this->load->view('view_user_products', $this->data);
 
 	}
 
-    function request_product_return () {
+	public function export_products()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
+			redirect(base_url());
+		}
+
+		$date_range = $this->get_sold_devices_date_range();
+		$sold_devices = $this->Excel_import_model->get_employee_sold_devices(
+			$this->session->userdata('user_id'),
+			$date_range['from_date'],
+			$date_range['to_date']
+		);
+
+		$spreadsheet = new Spreadsheet();
+		$sheet = $spreadsheet->getActiveSheet();
+		$sheet->setTitle('Sold Devices');
+		$sheet->setRightToLeft(true);
+		$sheet->fromArray(array(
+			'التاريخ',
+			'رقم الطلب',
+			'نوع المبيعات',
+			'الوصف',
+			'PRODUCT SERIAL NUMBER',
+			'مبلغ المبيعات'
+		), null, 'A1');
+
+		$row_number = 2;
+		foreach ($sold_devices as $sold_device) {
+			$order_number = !empty($sold_device['insert_excel_new_ordern'])
+				? $sold_device['insert_excel_new_ordern']
+				: $sold_device['insert_excel_ordern'];
+
+			$sheet->setCellValueExplicit('A' . $row_number, (string) $sold_device['insert_excel_date'], DataType::TYPE_STRING);
+			$sheet->setCellValueExplicit('B' . $row_number, (string) $order_number, DataType::TYPE_STRING);
+			$sheet->setCellValueExplicit('C' . $row_number, (string) $sold_device['insert_excel_sales_type'], DataType::TYPE_STRING);
+			$sheet->setCellValueExplicit('D' . $row_number, (string) $sold_device['insert_excel_description'], DataType::TYPE_STRING);
+			$sheet->setCellValueExplicit('E' . $row_number, (string) $sold_device['insert_excel_product_serial_number'], DataType::TYPE_STRING);
+			$sheet->setCellValue('F' . $row_number, (float) $sold_device['insert_excel_sales_amount']);
+			$row_number++;
+		}
+
+		$last_row = max(1, $row_number - 1);
+		$sheet->getStyle('A1:F1')->applyFromArray(array(
+			'font' => array('bold' => true, 'color' => array('rgb' => 'FFFFFF')),
+			'fill' => array('fillType' => Fill::FILL_SOLID, 'color' => array('rgb' => '667EEA')),
+			'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER),
+		));
+		$sheet->getStyle('A1:F' . $last_row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+		if ($last_row >= 2) {
+			$sheet->getStyle('F2:F' . $last_row)->getNumberFormat()->setFormatCode('#,##0.00');
+			$sheet->getStyle('A2:F' . $last_row)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+		}
+		$sheet->freezePane('A2');
+		$sheet->setAutoFilter('A1:F' . $last_row);
+
+		foreach (range('A', 'F') as $column) {
+			$sheet->getColumnDimension($column)->setAutoSize(true);
+		}
+
+		$filename = 'sold_devices_' . $date_range['from_date'] . '_to_' . $date_range['to_date'] . '.xlsx';
+		while (ob_get_level() > 0) {
+			ob_end_clean();
+		}
+
+		header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+		header('Content-Disposition: attachment;filename="' . $filename . '"');
+		header('Cache-Control: max-age=0');
+		header('Pragma: public');
+
+		$writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+		$writer->save('php://output');
+		exit;
+	}
+
+	private function get_sold_devices_date_range()
+	{
+		$default_from = date('Y-m-01');
+		$default_to = date('Y-m-d');
+		$from_date = $this->normalize_filter_date($this->input->get('from_date', true), $default_from);
+		$to_date = $this->normalize_filter_date($this->input->get('to_date', true), $default_to);
+
+		if ($from_date > $to_date) {
+			$temporary_date = $from_date;
+			$from_date = $to_date;
+			$to_date = $temporary_date;
+		}
+
+		return array('from_date' => $from_date, 'to_date' => $to_date);
+	}
+
+	private function normalize_filter_date($date, $fallback)
+	{
+		if (!is_string($date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+			return $fallback;
+		}
+
+		$parsed_date = DateTime::createFromFormat('!Y-m-d', $date);
+		$date_errors = DateTime::getLastErrors();
+		if (!$parsed_date || ($date_errors !== false && ($date_errors['warning_count'] > 0 || $date_errors['error_count'] > 0))) {
+			return $fallback;
+		}
+
+		return $parsed_date->format('Y-m-d');
+	}
+
+    public function custody()
+    {
         if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
-		    redirect(base_url());
-		}
+            redirect(base_url());
+        }
 
-		if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        $employee_id = (int) $this->session->userdata('user_id');
+        $custodies = $this->Custody->get_custodys(array('user_id' => $employee_id));
+        $requests = $this->ReturnRequests->get_employee_requests($employee_id, 50);
+        $latest_requests = array();
 
-			$custody_id = $this->input->post('id');
-			$custody = $this->Custody->get_custodys(['id' => $custody_id])[0];
+        foreach ($requests as $request) {
+            $request_custody_id = (int) $request['custody_id'];
+            if (!isset($latest_requests[$request_custody_id])) {
+                $latest_requests[$request_custody_id] = $request;
+            }
+        }
 
-			$serial_number = $custody['serial_number'];
-			$serial_control = 'yes';
-			if ($serial_number == null) {
-				$barcode = $custody['barcode'];
-				$serial_control = 'no';
-			}
+        foreach ($custodies as $index => $custody) {
+            $number = !empty($custody['serial_number']) ? $custody['serial_number'] : $custody['barcode'];
+            $item = $this->Store->get_store_item(array(
+                'item_code' => $custody['item_code'],
+                'serial_number' => $custody['serial_number'],
+                'barcode' => $custody['barcode'],
+            ));
+            if (empty($item) && !empty($number)) {
+                $item = $this->Store->get_serial_history_by_number($number);
+            }
 
-			$employee = $this->Users->get_one_user_by_user_id($this->session->userdata('user_id'));
+            $custodies[$index]['item_description'] = !empty($item['item_description'])
+                ? $item['item_description']
+                : $custody['item_code'];
+            $custodies[$index]['request'] = isset($latest_requests[(int) $custody['id']])
+                ? $latest_requests[(int) $custody['id']]
+                : null;
+        }
 
-			// Notify all admins
-
-			$admins = $this->get_admins();
-			foreach ($admins as $admin) {
-				$this->Notifications->add_notification([
-					'user_id' => $admin,
-					'description' => 'قام ' . $employee->user_fillname . ' بطلب إرجاع منتج',
-					'link' => base_url() . MOD_VALUE . 'admin/products/search?serial_control=' . $serial_control . '&serial=' . ($serial_control == 'no' ? $barcode : $serial_number),
-					'status' => 'unread',
-					'date_created' => date('Y-m-d H:i:s'),
-				]);
-			}
-		}
+        $this->data['custodies'] = $custodies;
+        $this->data['return_requests'] = $requests;
+        $this->data['page_title'] = 'العهد';
+        $this->load->view('view_user_custody', $this->data);
     }
 
-  function lock()
+    public function export_custody()
+    {
+        if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
+            redirect(base_url());
+        }
+
+        $custodies = $this->Custody->get_custodys(array('user_id' => (int) $this->session->userdata('user_id')));
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Custody');
+        $sheet->setRightToLeft(true);
+        $sheet->fromArray(array('النوع', 'الوصف', 'كود المنتج', 'السيريال / الباركود', 'رقم الطلب', 'تاريخ الاستلام'), null, 'A1');
+
+        $row_number = 2;
+        foreach ($custodies as $custody) {
+            $number = !empty($custody['serial_number']) ? $custody['serial_number'] : $custody['barcode'];
+            $item = $this->Store->get_store_item(array('item_code' => $custody['item_code']));
+            if (empty($item) && !empty($number)) {
+                $item = $this->Store->get_serial_history_by_number($number);
+            }
+            $description = !empty($item['item_description']) ? $item['item_description'] : $custody['item_code'];
+
+            $sheet->setCellValueExplicit('A' . $row_number, (int) $custody['type'] === 2 ? 'شريحة' : 'جهاز', DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('B' . $row_number, (string) $description, DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('C' . $row_number, (string) $custody['item_code'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('D' . $row_number, (string) $number, DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('E' . $row_number, (string) $custody['order_number'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('F' . $row_number, (string) $custody['date_created'], DataType::TYPE_STRING);
+            $row_number++;
+        }
+
+        $last_row = max(1, $row_number - 1);
+        $sheet->getStyle('A1:F1')->applyFromArray(array(
+            'font' => array('bold' => true, 'color' => array('rgb' => 'FFFFFF')),
+            'fill' => array('fillType' => Fill::FILL_SOLID, 'color' => array('rgb' => '667EEA')),
+            'alignment' => array('horizontal' => Alignment::HORIZONTAL_CENTER),
+        ));
+        $sheet->getStyle('A1:F' . $last_row)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('E2E8F0');
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter('A1:F' . $last_row);
+        foreach (range('A', 'F') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="employee_custody_' . date('Y-m-d') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+        header('Pragma: public');
+        IOFactory::createWriter($spreadsheet, 'Xlsx')->save('php://output');
+        exit;
+    }
+
+    public function request_product_return()
+    {
+        if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
+            redirect(base_url());
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            redirect(base_url() . MOD_VALUE . 'user/custody');
+        }
+
+        $employee_id = (int) $this->session->userdata('user_id');
+        $custody_id = (int) $this->input->post('custody_id');
+        $employee_note = mb_substr(trim((string) $this->input->post('employee_note', true)), 0, 500);
+        $custody = $this->Custody->get_custody(array('id' => $custody_id, 'user_id' => $employee_id));
+
+        if (empty($custody)) {
+            $this->session->set_flashdata('error', 'العهدة غير موجودة أو لم تعد مسجلة عليك');
+            redirect(base_url() . MOD_VALUE . 'user/custody');
+        }
+        if ($this->ReturnRequests->get_pending_by_custody($custody_id)) {
+            $this->session->set_flashdata('error', 'يوجد طلب إرجاع قيد المراجعة لهذه العهدة بالفعل');
+            redirect(base_url() . MOD_VALUE . 'user/custody');
+        }
+
+        $number = !empty($custody['serial_number']) ? $custody['serial_number'] : $custody['barcode'];
+        $item = $this->Store->get_store_item(array('item_code' => $custody['item_code']));
+        if (empty($item) && !empty($number)) {
+            $item = $this->Store->get_serial_history_by_number($number);
+        }
+        $description = !empty($item['item_description']) ? $item['item_description'] : $custody['item_code'];
+
+        $request_id = $this->ReturnRequests->add_request(array(
+            'custody_id' => $custody_id,
+            'employee_id' => $employee_id,
+            'item_code' => $custody['item_code'],
+            'item_description' => $description,
+            'serial_number' => $custody['serial_number'],
+            'barcode' => $custody['barcode'],
+            'order_number' => $custody['order_number'],
+            'custody_type' => (int) $custody['type'],
+            'custody_date' => $custody['date_created'],
+            'employee_note' => $employee_note,
+            'status' => 'pending',
+            'requested_at' => date('Y-m-d H:i:s'),
+        ));
+
+        if (!$request_id) {
+            $this->session->set_flashdata('error', 'تعذر تسجيل طلب الإرجاع، حاول مرة أخرى');
+            redirect(base_url() . MOD_VALUE . 'user/custody');
+        }
+
+        $employee = $this->Model_admin->get_user_by_id($employee_id);
+        foreach ($this->get_admins() as $admin_id) {
+            $this->Notifications->add_notification(array(
+                'user_id' => $admin_id,
+                'description' => 'طلب إرجاع عهدة جديد من ' . $employee['user_fillname'] . ' - ' . $description,
+                'link' => base_url() . MOD_VALUE . 'admin/index#return-requests',
+                'status' => 'unread',
+                'date_created' => date('Y-m-d H:i:s'),
+            ));
+        }
+
+        $this->session->set_flashdata('success', 'تم إرسال طلب الإرجاع للإدارة بنجاح');
+        redirect(base_url() . MOD_VALUE . 'user/custody#return-requests');
+    }
+
+	function lock()
 	{
 		if(!in_array($this->session->userdata('user_id'), $this->get_employees())) {
 		    redirect(base_url());
 		}
 
+		$this->data['page_title'] = 'التقفيلة اليومية';
 		$this->load->view('view_user_lock', $this->data);
 	}
 
@@ -174,6 +410,7 @@ class User extends MY_Controller {
 		}
 
 		$this->data['employee'] = $this->Model_admin->get_user_by_id($this->session->userdata('user_id'));
+		$this->data['page_title'] = 'الملف التعريفي';
 		$this->load->view('view_user_profile', $this->data);
 	}
 
@@ -213,6 +450,31 @@ class User extends MY_Controller {
 		redirect(base_url().MOD_VALUE.'user/profile');
 	}
 
+	private function normalize_lock_date($date)
+	{
+		$date = trim((string) $date);
+		$date_parts = array();
+
+		if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $date_parts)) {
+			$year = (int) $date_parts[1];
+			$month = (int) $date_parts[2];
+			$day = (int) $date_parts[3];
+		} else if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $date, $date_parts)) {
+			// Some browsers display and submit the date as MM/DD/YYYY.
+			$year = (int) $date_parts[3];
+			$month = (int) $date_parts[1];
+			$day = (int) $date_parts[2];
+		} else {
+			return null;
+		}
+
+		if (!checkdate($month, $day, $year)) {
+			return null;
+		}
+
+		return sprintf('%04d-%02d-%02d', $year, $month, $day);
+	}
+
 
 public function sendlock()
 	{
@@ -234,28 +496,35 @@ public function sendlock()
 			
 
 
-			$userid               = $this->input->post('user_id', true);
-	        
-	        if(isset($user_lock_time)){
-	            $send_date = $user_lock_time;
-	            
-	            if(empty($user_lock_time)) {
-					$valid = 0;
-					$error .= "ادخل التاريخ".'<br>';
-				}
-	        }else{
-	            $send_date = date('Y-m-d');
-	        }
-	        
-	        if(isset($userid)){
-	            $user_id   =	$userid;
-	            if (empty($user_id)) {
+			$session_user_id = (string) $this->session->userdata('user_id');
+			$is_admin = in_array($session_user_id, $this->get_admins(), true);
+
+			if ($is_admin) {
+				$user_id = (string) $this->input->post('user_id', true);
+				$send_date = $this->normalize_lock_date($user_lock_time);
+
+				if (!in_array($user_id, $this->get_employees(), true)) {
 					$valid = 0;
 					$error .= "اختر الموظف ".'<br>';
 				}
-	        }else{
-	            $user_id  =	$this->session->userdata('user_id');
-	        }
+
+				if ($send_date === null) {
+					$valid = 0;
+					$error .= "ادخل تاريخ صحيح".'<br>';
+				} else if ($send_date > date('Y-m-d')) {
+					$valid = 0;
+					$error .= "لا يمكن إضافة تقفيلة بتاريخ مستقبلي".'<br>';
+				}
+			} else {
+				if (!in_array($session_user_id, $this->get_employees(), true)) {
+					redirect(base_url());
+					exit;
+				}
+
+				// Employee submissions remain restricted to the current day.
+				$user_id = $session_user_id;
+				$send_date = date('Y-m-d');
+			}
 	        
 	        
 			if($user_lock_cash < 0 ) {
@@ -276,15 +545,15 @@ public function sendlock()
             if($valid == 1)
 		    {
 		        
-		  $chk = $this->Model_user->check_duplicate_day($user_id,$send_date);
-            if($chk) {
-            	$valid = 0;
-            	$error .= "لم يتم الحفظ تم اضافة التقفيلة لهذا اليوم".'<br>';
-            	if(!isset($userid)){
-            	$error .= "للتعديل تواصل مع مدير النظام".'<br>';
-            	}
-            	$this->session->set_flashdata('error',$error);
-		    	redirect($this->agent->referrer());
+				$chk = $this->Model_user->check_duplicate_day($user_id,$send_date);
+				if($chk) {
+					$valid = 0;
+					$error .= "لم يتم الحفظ تم اضافة التقفيلة لهذا اليوم".'<br>';
+					if(!$is_admin){
+						$error .= "للتعديل تواصل مع مدير النظام".'<br>';
+					}
+					$this->session->set_flashdata('error',$error);
+					redirect($this->agent->referrer());
             }else{
 		        $form_data = array(
 		            'user_lock_userid'        => secure_data($user_id),

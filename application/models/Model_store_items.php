@@ -8,6 +8,7 @@ class Model_store_items extends CI_Model
     protected $shelves_table;
     protected $table_images;
     protected $serial_history_table;
+    protected $stock_movements_table;
 	public function __construct()
 	{
 		parent::__construct();
@@ -15,7 +16,9 @@ class Model_store_items extends CI_Model
         $this->shelves_table = 'tbl_shelves_items';
         $this->table_images = 'tbl_products_images';
         $this->serial_history_table = 'tbl_product_serial_history';
+        $this->stock_movements_table = 'tbl_product_stock_movements';
         $this->ensure_serial_history_table();
+        $this->ensure_stock_movements_table();
 	}
 
     /**
@@ -23,35 +26,47 @@ class Model_store_items extends CI_Model
      * when a stock refresh removes a sold serial from current_store_items.
      */
     private function ensure_serial_history_table() {
-        if ($this->db->table_exists($this->serial_history_table)) {
-            return;
+        $schema_changed = false;
+        if (!$this->db->table_exists($this->serial_history_table)) {
+            $this->db->query(
+                "CREATE TABLE IF NOT EXISTS `{$this->serial_history_table}` ("
+                . "`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,"
+                . "`serial_number` VARCHAR(191) NOT NULL,"
+                . "`barcode` VARCHAR(191) NOT NULL DEFAULT '',"
+                . "`item_code` VARCHAR(120) NOT NULL DEFAULT '',"
+                . "`item_description` VARCHAR(255) NOT NULL DEFAULT '',"
+                . "`subinventory_code` VARCHAR(100) NOT NULL DEFAULT '',"
+                . "`updated_at` DATETIME NOT NULL,"
+                . "PRIMARY KEY (`id`),"
+                . "UNIQUE KEY `serial_number_unique` (`serial_number`),"
+                . "KEY `item_code_index` (`item_code`)"
+                . ") ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            );
+            $schema_changed = true;
+        } elseif (!$this->db->field_exists('subinventory_code', $this->serial_history_table)) {
+            $this->db->query(
+                "ALTER TABLE `{$this->serial_history_table}` "
+                . "ADD COLUMN `subinventory_code` VARCHAR(100) NOT NULL DEFAULT '' AFTER `item_description`"
+            );
+            $schema_changed = true;
         }
 
-        $this->db->query(
-            "CREATE TABLE IF NOT EXISTS `{$this->serial_history_table}` ("
-            . "`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,"
-            . "`serial_number` VARCHAR(191) NOT NULL,"
-            . "`barcode` VARCHAR(191) NOT NULL DEFAULT '',"
-            . "`item_code` VARCHAR(120) NOT NULL DEFAULT '',"
-            . "`item_description` VARCHAR(255) NOT NULL DEFAULT '',"
-            . "`updated_at` DATETIME NOT NULL,"
-            . "PRIMARY KEY (`id`),"
-            . "UNIQUE KEY `serial_number_unique` (`serial_number`),"
-            . "KEY `item_code_index` (`item_code`)"
-            . ") ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-        );
+        if (!$schema_changed) {
+            return;
+        }
 
         // Seed the reference once with everything that is currently in stock.
         $this->db->query(
             "INSERT INTO `{$this->serial_history_table}` "
-            . "(`serial_number`, `barcode`, `item_code`, `item_description`, `updated_at`) "
-            . "SELECT UPPER(TRIM(serial_number)), COALESCE(barcode, ''), item_code, item_description, NOW() "
+            . "(`serial_number`, `barcode`, `item_code`, `item_description`, `subinventory_code`, `updated_at`) "
+            . "SELECT UPPER(TRIM(serial_number)), COALESCE(barcode, ''), item_code, item_description, COALESCE(subinventory_code, ''), NOW() "
             . "FROM `{$this->table}` "
             . "WHERE NULLIF(TRIM(serial_number), '') IS NOT NULL "
             . "ON DUPLICATE KEY UPDATE "
             . "`barcode` = VALUES(`barcode`), "
             . "`item_code` = VALUES(`item_code`), "
             . "`item_description` = VALUES(`item_description`), "
+            . "`subinventory_code` = VALUES(`subinventory_code`), "
             . "`updated_at` = VALUES(`updated_at`)"
         );
     }
@@ -70,6 +85,7 @@ class Model_store_items extends CI_Model
             'barcode' => isset($item['barcode']) ? trim((string) $item['barcode']) : '',
             'item_code' => isset($item['item_code']) ? trim((string) $item['item_code']) : '',
             'item_description' => isset($item['item_description']) ? trim((string) $item['item_description']) : '',
+            'subinventory_code' => isset($item['subinventory_code']) ? trim((string) $item['subinventory_code']) : '',
             'updated_at' => date('Y-m-d H:i:s')
         );
 
@@ -111,12 +127,152 @@ class Model_store_items extends CI_Model
         return $this->db->get($this->serial_history_table)->row_array();
     }
 
+    /**
+     * Store every inventory-file transition for serialized products.
+     * An "in" row means the serial appeared after being absent, while an
+     * "out" row means a later inventory file no longer contained it.
+     */
+    private function ensure_stock_movements_table() {
+        $table_created = false;
+        $schema_changed = false;
+        $backfill_setting = 'stock_movements_subinventory_backfilled';
+        if (!$this->db->table_exists($this->stock_movements_table)) {
+            $this->db->query(
+                "CREATE TABLE IF NOT EXISTS `{$this->stock_movements_table}` ("
+                . "`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+                . "`serial_number` VARCHAR(191) NOT NULL,"
+                . "`item_code` VARCHAR(120) NOT NULL DEFAULT '',"
+                . "`item_description` VARCHAR(255) NOT NULL DEFAULT '',"
+                . "`subinventory_code` VARCHAR(100) NOT NULL DEFAULT '',"
+                . "`movement_type` VARCHAR(10) NOT NULL,"
+                . "`source_filename` VARCHAR(255) NOT NULL DEFAULT '',"
+                . "`uploaded_by` INT NULL,"
+                . "`occurred_at` DATETIME NOT NULL,"
+                . "PRIMARY KEY (`id`),"
+                . "KEY `serial_number_index` (`serial_number`),"
+                . "KEY `occurred_at_index` (`occurred_at`)"
+                . ") ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+            );
+            $table_created = true;
+            $schema_changed = true;
+        } elseif (!$this->db->field_exists('subinventory_code', $this->stock_movements_table)) {
+            $this->db->query(
+                "ALTER TABLE `{$this->stock_movements_table}` "
+                . "ADD COLUMN `subinventory_code` VARCHAR(100) NOT NULL DEFAULT '' AFTER `item_description`"
+            );
+            $schema_changed = true;
+        }
+
+        $backfill_completed = $this->db->table_exists('tbl_settings')
+            && $this->db->where('field', $backfill_setting)->count_all_results('tbl_settings') > 0;
+
+        if (!$schema_changed && $backfill_completed) {
+            return;
+        }
+
+        // Existing current stock gets one initial entry using its original
+        // creation time. Historical exits cannot be inferred safely.
+        if ($table_created) {
+            $this->db->query(
+                "INSERT INTO `{$this->stock_movements_table}` "
+                . "(`serial_number`, `item_code`, `item_description`, `subinventory_code`, `movement_type`, `source_filename`, `uploaded_by`, `occurred_at`) "
+                . "SELECT UPPER(TRIM(serial_number)), COALESCE(item_code, ''), COALESCE(item_description, ''), COALESCE(subinventory_code, ''), "
+                . "'in', 'تهيئة من المخزون الحالي', NULL, COALESCE(created_at, NOW()) "
+                . "FROM `{$this->table}` "
+                . "WHERE NULLIF(TRIM(serial_number), '') IS NOT NULL"
+            );
+        }
+
+        // Complete old movement rows from the permanent serial reference
+        // whenever a reliable value is still available.
+        $this->db->query(
+            "UPDATE `{$this->stock_movements_table}` AS m "
+            . "INNER JOIN `{$this->serial_history_table}` AS h ON h.serial_number = m.serial_number "
+            . "SET m.subinventory_code = h.subinventory_code "
+            . "WHERE TRIM(m.subinventory_code) = '' AND TRIM(h.subinventory_code) != ''"
+        );
+
+        if ($this->db->table_exists('tbl_settings')) {
+            if ($backfill_completed) {
+                $this->db->where('field', $backfill_setting);
+                $this->db->update('tbl_settings', array('value' => date('Y-m-d H:i:s')));
+            } else {
+                $this->db->insert('tbl_settings', array(
+                    'field' => $backfill_setting,
+                    'value' => date('Y-m-d H:i:s'),
+                ));
+            }
+        }
+    }
+
+    public function record_stock_movement($item, $movement_type, $occurred_at, $uploaded_by = null, $source_filename = '') {
+        $serial_number = isset($item['serial_number'])
+            ? strtoupper(trim((string) $item['serial_number']))
+            : '';
+
+        if ($serial_number === '' || !in_array($movement_type, array('in', 'out'), true)) {
+            return false;
+        }
+
+        $this->db->insert($this->stock_movements_table, array(
+            'serial_number' => $serial_number,
+            'item_code' => isset($item['item_code']) ? trim((string) $item['item_code']) : '',
+            'item_description' => isset($item['item_description']) ? trim((string) $item['item_description']) : '',
+            'subinventory_code' => isset($item['subinventory_code']) ? trim((string) $item['subinventory_code']) : '',
+            'movement_type' => $movement_type,
+            'source_filename' => substr(basename((string) $source_filename), 0, 255),
+            'uploaded_by' => $uploaded_by !== null ? (int) $uploaded_by : null,
+            'occurred_at' => $occurred_at,
+        ));
+
+        return $this->db->affected_rows() > 0;
+    }
+
+    public function get_stock_movements_by_number($number) {
+        $number = strtoupper(trim((string) $number));
+
+        if ($number === '') {
+            return array();
+        }
+
+        $serial_without_s = preg_replace('/^S/', '', $number, 1);
+        $serial_with_s = 'S' . $serial_without_s;
+
+        $this->db->where(
+            'UPPER(TRIM(serial_number)) IN ('
+            . $this->db->escape($number) . ', '
+            . $this->db->escape($serial_without_s) . ', '
+            . $this->db->escape($serial_with_s) . ')',
+            null,
+            false
+        );
+        $this->db->order_by('occurred_at', 'DESC');
+        $this->db->order_by('id', 'DESC');
+
+        return $this->db->get($this->stock_movements_table)->result_array();
+    }
+
     private function counted_subinventory_codes() {
         return array(
             '23012' => '23012',
             'SAGENT_STK' => 'SAgent_STK',
             'RESV_23012' => 'RESV_23012'
         );
+    }
+
+    /**
+     * Count the distinct serial numbers stored in the three approved
+     * subinventories. Dashboard quantities must not depend on quantity_total,
+     * custody rows, or delivery requests.
+     */
+    private function counted_subinventory_serial_total_sql($alias = 'i') {
+        return "
+            COUNT(DISTINCT CASE
+                WHEN NULLIF(TRIM({$alias}.serial_number), '') IS NOT NULL
+                    AND UPPER(TRIM({$alias}.subinventory_code)) IN ('23012', 'SAGENT_STK', 'RESV_23012')
+                THEN UPPER(TRIM({$alias}.serial_number))
+            END)
+        ";
     }
 
     /**
@@ -254,17 +410,6 @@ class Model_store_items extends CI_Model
         return $rows;
     }
 
-    public function total_quantity_select_query() {
-        $this->db->select("
-            CASE
-                WHEN LOWER(TRIM(i.serial_control)) = 'no'
-                    THEN i.quantity_total - COUNT(DISTINCT CASE WHEN c.item_code = i.item_code THEN c.id END) - COUNT(DISTINCT CASE WHEN r.item_code = i.item_code THEN r.id END)
-                ELSE
-                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(i.serial_control)) = 'yes' AND c.serial_number IS NULL AND r.serial_number IS NULL THEN i.serial_number END)
-            END AS total_quantity
-        ", False);
-    }
-
     public function join_custodys() {
         $this->db->join('tbl_user_custody c', 'i.serial_number = c.serial_number OR (i.serial_control = "no" AND i.item_code = c.item_code)', 'left');
     }
@@ -297,11 +442,9 @@ class Model_store_items extends CI_Model
             i.item_category,
             i.item_code
         ", FALSE);
-        $this->total_quantity_select_query();
+        $this->db->select($this->counted_subinventory_serial_total_sql('i') . ' AS total_quantity', FALSE);
         
         $this->db->from($this->table . ' AS i');
-        $this->join_custodys();
-        $this->join_requests();
         
         if (!empty($searchName)) {
             $this->db->group_start();
@@ -325,36 +468,26 @@ class Model_store_items extends CI_Model
 
 
     public function get_low_products() {
+        $totalQuantitySql = $this->counted_subinventory_serial_total_sql('i');
         // جلب البيانات مع تجميع العدد - CodeIgniter Query Builder (PHP 5.6 compatible)
         $sql = "
             SELECT
                 i.item_description,
                 i.item_category,
                 i.item_code,
-                i.low_quantity,
-                i.updated_at,
-                CASE
-                    WHEN LOWER(TRIM(i.serial_control)) = 'no'
-                        THEN i.quantity_total - COUNT(DISTINCT CASE WHEN c.item_code = i.item_code THEN c.id END) - COUNT(DISTINCT CASE WHEN r.item_code = i.item_code THEN r.id END)
-                    ELSE
-                        COUNT(DISTINCT CASE WHEN LOWER(TRIM(i.serial_control)) = 'yes' AND c.serial_number IS NULL AND r.serial_number IS NULL THEN i.serial_number END)
-                END AS total_quantity
+                MAX(i.low_quantity) AS low_quantity,
+                MAX(i.updated_at) AS updated_at,
+                {$totalQuantitySql} AS total_quantity
 
             FROM current_store_items i
-
-            LEFT JOIN tbl_user_custody c
-                ON i.serial_number = c.serial_number OR (i.serial_control = 'no' AND i.item_code = c.item_code)
-
-            LEFT JOIN tbl_requests r
-                ON i.serial_number = r.serial_number OR (i.serial_control = 'no' AND i.item_code = r.item_code)
-
 
             GROUP BY
                 i.item_description,
                 i.item_category,
                 i.item_code
 
-            HAVING total_quantity <= i.low_quantity
+            HAVING low_quantity IS NOT NULL
+               AND total_quantity <= low_quantity
 
             ORDER BY total_quantity ASC;
         ";
@@ -365,11 +498,9 @@ class Model_store_items extends CI_Model
 
     public function get_stats() {
         // Get dashboard statistics - CodeIgniter Query Builder (PHP 5.6 compatible)
-        $this->db->select('
-            COUNT(DISTINCT item_description) as total_products,
-            COUNT(DISTINCT item_category) as total_categories,
-            SUM(quantity_total) as total_quantity
-        ', FALSE);
+        $this->db->select('COUNT(DISTINCT item_description) AS total_products', FALSE);
+        $this->db->select('COUNT(DISTINCT item_category) AS total_categories', FALSE);
+        $this->db->select($this->counted_subinventory_serial_total_sql($this->table) . ' AS total_quantity', FALSE);
         
         $this->db->from($this->table);
         
@@ -414,18 +545,6 @@ class Model_store_items extends CI_Model
 		return $query->row_array()['count'];
 	}
 
-
-    function get_store_unique_items_count($where = array()) {
-        $this->total_quantity_select_query();
-        
-        $this->db->from($this->table . ' AS i');
-        $this->join_custodys();
-        $this->join_requests();
-
-        $this->db->where($where);
-        $query = $this->db->get();
-        return $query->row_array()['total_quantity'];
-    }
 
     function get_store_item($where = array()) {
         $this->db->select("*");
@@ -473,16 +592,22 @@ class Model_store_items extends CI_Model
     }
 
     function get_items_count_in_shelf($shelf_id) {
-        $this->total_quantity_select_query();
-
-        $this->db->from($this->shelves_table . ' AS i');
+        $this->db->select("
+            COUNT(DISTINCT CASE
+                WHEN NULLIF(TRIM(serial_number), '') IS NOT NULL
+                THEN UPPER(TRIM(serial_number))
+            END)
+            + COALESCE(SUM(CASE
+                WHEN NULLIF(TRIM(serial_number), '') IS NULL
+                THEN GREATEST(COALESCE(quantity_total, 0), 0)
+                ELSE 0
+            END), 0) AS total_quantity
+        ", FALSE);
+        $this->db->from($this->shelves_table);
         $this->db->where('shelf_id', $shelf_id);
 
-        $this->db->join('tbl_user_custody c', 'i.serial_number = c.serial_number OR (i.serial_control = "no" AND i.item_code = c.item_code)', 'left');
-        $this->db->join('tbl_requests r', 'i.serial_number = r.serial_number OR (i.serial_control = "no" AND i.item_code = r.item_code)', 'left');
-
-        $query = $this->db->get();
-        return array_column($query->result_array(), 'total_quantity')[0];
+        $row = $this->db->get()->row_array();
+        return isset($row['total_quantity']) ? (int) $row['total_quantity'] : 0;
     }
 
     function get_items_in_shelf($shelf_id) {

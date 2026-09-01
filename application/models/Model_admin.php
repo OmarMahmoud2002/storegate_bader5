@@ -97,7 +97,8 @@ class Model_admin extends CI_Model
     {
         $this->db->select('*');
         $this->db->from('tbl_user_lock');
-        $this->db->order_by('user_lock_id ', 'asc');
+        $this->db->order_by('user_lock_time', 'desc');
+        $this->db->order_by('user_lock_id', 'desc');
         $query = $this->db->get();
         return $query->result_array();
     }

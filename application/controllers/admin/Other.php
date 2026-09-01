@@ -22,6 +22,7 @@ class Other extends MY_Controller {
         $this->load->model('Model_notifications', 'Notifications');
         $this->load->model('Model_requests', 'Requests');
         $this->load->model('Model_custody', 'Custodys');
+		$this->load->model('Model_return_requests', 'ReturnRequests');
 		$this->load->model('Model_sales', 'Sales');
         $this->load->model('Model_shipments', 'Shipments');
         $this->load->model('Model_operations', 'Operations');
@@ -55,8 +56,221 @@ class Other extends MY_Controller {
 		}
 
 		$this->check_permission('home.view');
+		$this->ensure_home_tab_permissions();
 
+		$home_tab_visibility = array();
+		foreach ($this->get_home_tab_permissions() as $tab_permission) {
+			$home_tab_visibility[$tab_permission['tab']] = $this->get_permission_enabled($tab_permission['key']);
+		}
+		$this->data['home_tab_visibility'] = $home_tab_visibility;
+
+		$filters = $this->get_return_request_filters();
+		$this->data['return_requests'] = !empty($home_tab_visibility['returns']) ? $this->ReturnRequests->get_dashboard_requests(100, $filters) : array();
+		$this->data['return_request_counts'] = !empty($home_tab_visibility['returns']) ? $this->ReturnRequests->get_status_counts($filters) : array('pending' => 0, 'approved' => 0, 'rejected' => 0, 'sold' => 0);
+		$this->data['return_request_employees'] = !empty($home_tab_visibility['returns']) ? $this->ReturnRequests->get_request_employees() : array();
+		$this->data['return_filters'] = $filters;
+		$this->data['return_filter_query'] = $this->build_return_filter_query($filters);
+		$this->data['page_title'] = 'الصفحة الرئيسية';
 		$this->load->view('view_admin_home', $this->data);
+	}
+
+	private function get_return_request_filters($source = 'get')
+	{
+		$read = function ($key) use ($source) {
+			return $source === 'post'
+				? $this->input->post($key, true)
+				: $this->input->get($key, true);
+		};
+
+		return array(
+			'employee_id' => (int) $read('employee_id'),
+			'serial' => mb_substr(trim((string) $read('serial')), 0, 120),
+		);
+	}
+
+	/**
+	 * Rebuilds the filter query string from validated values only, so the
+	 * review redirect can return the admin to the same filtered view without
+	 * ever echoing back an attacker-supplied target.
+	 */
+	private function build_return_filter_query($filters)
+	{
+		$query = array();
+		if (!empty($filters['employee_id'])) {
+			$query['employee_id'] = (int) $filters['employee_id'];
+		}
+		if ($filters['serial'] !== '') {
+			$query['serial'] = $filters['serial'];
+		}
+
+		return empty($query) ? '' : '?' . http_build_query($query);
+	}
+
+	public function review_return_request()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+		$this->check_permission('home.view');
+		$this->ensure_home_tab_permissions();
+		$this->check_permission('home.tabs.returns.view');
+
+		$return_to = base_url().MOD_VALUE.'admin/index'
+			. $this->build_return_filter_query($this->get_return_request_filters('post'))
+			. '#return-requests';
+
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			redirect($return_to);
+		}
+
+		$request_id = (int) $this->input->post('request_id');
+		$decision = trim((string) $this->input->post('decision', true));
+		$admin_note = mb_substr(trim((string) $this->input->post('admin_note', true)), 0, 500);
+		$admin_id = (int) $this->session->userdata('user_id');
+		$request = $this->ReturnRequests->get_request($request_id);
+
+		if (empty($request) || !in_array($request['status'], array('pending', 'reviewing'), true)) {
+			$this->session->set_flashdata('error', 'تمت مراجعة هذا الطلب بالفعل أو لم يعد متاحًا');
+			redirect($return_to);
+		}
+
+		if ($decision === 'reject') {
+			if (!$this->ReturnRequests->claim_pending_request($request_id, $admin_id)) {
+				$this->session->set_flashdata('error', 'الطلب قيد المراجعة بواسطة مدير آخر');
+				redirect($return_to);
+			}
+			if ($admin_note === '') {
+				$admin_note = 'تم رفض طلب الإرجاع من الإدارة';
+			}
+			if (!$this->ReturnRequests->complete_review($request_id, 'rejected', $admin_id, $admin_note)) {
+				$this->session->set_flashdata('error', 'تعذر رفض الطلب، ربما تمت مراجعته من مدير آخر');
+				redirect($return_to);
+			}
+
+			$this->notify_employee_about_return_decision($request, 'rejected', $admin_note);
+			$this->session->set_flashdata('success', 'تم رفض طلب الإرجاع وإبلاغ الموظف');
+			redirect($return_to);
+		}
+
+		if ($decision !== 'approve') {
+			$this->session->set_flashdata('error', 'قرار المراجعة غير صحيح');
+			redirect($return_to);
+		}
+
+		if (!$this->ReturnRequests->claim_pending_request($request_id, $admin_id)) {
+			$this->session->set_flashdata('error', 'الطلب قيد المراجعة بواسطة مدير آخر');
+			redirect($return_to);
+		}
+
+		$custody = $this->Custodys->get_custody(array(
+			'id' => (int) $request['custody_id'],
+			'user_id' => (int) $request['employee_id'],
+		));
+		if (empty($custody)) {
+			$this->ReturnRequests->release_review($request_id, 'العهدة لم تعد مسجلة على الموظف؛ راجع سجل العمليات');
+			$this->session->set_flashdata('error', 'العهدة لم تعد مسجلة على الموظف، لم يتم تنفيذ الطلب');
+			redirect($return_to);
+		}
+
+		$return_result = $this->Custodys->return_to_stock((int) $request['custody_id']);
+		if (!$return_result['status']) {
+			$this->ReturnRequests->release_review($request_id, 'تعذر تنفيذ حركة الإرجاع، حاول مرة أخرى');
+			$this->session->set_flashdata('error', 'تعذر إرجاع العهدة إلى المخزون');
+			redirect($return_to);
+		}
+
+		if ($admin_note === '') {
+			$admin_note = 'تمت الموافقة وإرجاع العهدة إلى المخزون';
+		}
+		if (!$this->ReturnRequests->complete_review($request_id, 'approved', $admin_id, $admin_note)) {
+			$this->session->set_flashdata('error', 'تم إرجاع العهدة لكن تعذر تحديث حالة الطلب؛ راجع سجل العمليات');
+			redirect($return_to);
+		}
+
+		$number = !empty($custody['serial_number']) ? $custody['serial_number'] : $custody['barcode'];
+		$employee = $this->Model_admin->get_user_by_id($request['employee_id']);
+		$employee_name = !empty($employee['user_fillname']) ? $employee['user_fillname'] : 'موظف غير متاح';
+		$this->Operations->add_operation(array(
+			'item_description' => $request['item_description'],
+			'item_code' => $request['item_code'],
+			'serial' => $number,
+			'operation' => 'تمت الموافقة على طلب إرجاع العهدة من ' . $employee_name . ' إلى المخزون',
+			'sales_order' => '0',
+		), $admin_id);
+
+		$this->notify_employee_about_return_decision($request, 'approved', $admin_note);
+		$this->session->set_flashdata('success', 'تمت الموافقة وإرجاع العهدة وإبلاغ الموظف');
+		redirect($return_to);
+	}
+
+	private function notify_employee_about_return_decision($request, $status, $note)
+	{
+		$description = $status === 'approved'
+			? 'تمت الموافقة على طلب إرجاع العهدة: '
+			: 'تم رفض طلب إرجاع العهدة: ';
+		$description .= !empty($request['item_description']) ? $request['item_description'] : $request['item_code'];
+
+		$this->Notifications->add_notification(array(
+			'user_id' => (int) $request['employee_id'],
+			'description' => $description . ($note !== '' ? ' - ' . $note : ''),
+			'link' => base_url().MOD_VALUE.'user/custody#return-requests',
+			'status' => 'unread',
+			'date_created' => date('Y-m-d H:i:s'),
+		));
+	}
+
+	public function profile()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+
+		$admin = $this->Model_admin->get_user_by_id($this->session->userdata('user_id'));
+		if (empty($admin) || $admin['user_type'] !== 'admin') {
+			redirect(base_url());
+		}
+
+		$this->data['page_title'] = 'الملف التعريفي';
+		$this->data['admin'] = $admin;
+		$this->load->view('view_admin_profile', $this->data);
+	}
+
+	public function change_admin_password()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+
+		if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+			redirect(base_url().MOD_VALUE.'admin/profile');
+		}
+
+		$admin_id = $this->session->userdata('user_id');
+		$current_password = $this->input->post('current_user_password', true);
+		$new_password = $this->input->post('new_user_password', true);
+		$confirm_password = $this->input->post('confirm_user_password', true);
+
+		if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
+			$this->session->set_flashdata('error', 'يجب إدخال كلمة السر الحالية والجديدة وتأكيدها');
+			redirect(base_url().MOD_VALUE.'admin/profile');
+		}
+
+		if ($new_password !== $confirm_password) {
+			$this->session->set_flashdata('error', 'كلمة السر الجديدة وتأكيدها غير متطابقين');
+			redirect(base_url().MOD_VALUE.'admin/profile');
+		}
+
+		$admin = $this->Model_admin->get_user_by_id($admin_id);
+		if (empty($admin) || $admin['user_type'] !== 'admin' || !hash_equals($admin['user_password'], md5($current_password))) {
+			$this->session->set_flashdata('error', 'كلمة السر الحالية غير صحيحة');
+			redirect(base_url().MOD_VALUE.'admin/profile');
+		}
+
+		$this->Model_admin->edit_employee($admin_id, [
+			'user_password' => secure_data(md5($new_password))
+		]);
+		$this->session->set_flashdata('success', 'تم تغيير كلمة السر بنجاح');
+		redirect(base_url().MOD_VALUE.'admin/profile');
 	}
 
 	public function permissions()
@@ -66,6 +280,7 @@ class Other extends MY_Controller {
 		}
 
 		$this->check_permission('roles.view');
+		$this->ensure_home_tab_permissions();
 
 		$this->data['permission_groups'] = $this->get_admin_permissions_catalog();
 		
@@ -164,6 +379,14 @@ class Other extends MY_Controller {
 
 	private function get_admin_permissions_catalog()
 	{
+		$home_tab_permissions = array_map(function ($permission) {
+			return array(
+				'key' => $permission['key'],
+				'label' => $permission['label'],
+				'type' => $permission['type'],
+			);
+		}, $this->get_home_tab_permissions());
+
 		return [
 			[
 				'section' => 'الصفحات الرئيسية والمخزون',
@@ -172,9 +395,9 @@ class Other extends MY_Controller {
 					[
 						'label' => 'الصفحة الرئيسية',
 						'route' => 'admin/index',
-						'permissions' => [
+						'permissions' => array_merge([
 							['key' => 'home.view', 'label' => 'عرض الصفحة', 'type' => 'view'],
-						],
+						], $home_tab_permissions),
 					],
 					[
 						'label' => 'البحث عن منتج',
@@ -375,6 +598,31 @@ class Other extends MY_Controller {
 			],
 		];
 	}	
+
+	private function get_home_tab_permissions()
+	{
+		$common = array(
+			'type' => 'special',
+			'page_label' => 'الصفحة الرئيسية',
+			'route' => 'admin/index',
+			'section_name' => 'الصفحات الرئيسية والمخزون',
+			'section_icon' => 'bi-box-seam',
+		);
+
+		return array(
+			array_merge($common, array('tab' => 'returns', 'key' => 'home.tabs.returns.view', 'label' => 'إظهار صفحه طلبات الإرجاع')),
+			array_merge($common, array('tab' => 'low-stock', 'key' => 'home.tabs.low_stock.view', 'label' => 'إظهار صفحه المنتجات منخفضة الكمية')),
+			array_merge($common, array('tab' => 'over-five-days', 'key' => 'home.tabs.over_five_days.view', 'label' => 'إظهار صفحه المنتجات التي تجاوزت 5 أيام')),
+			array_merge($common, array('tab' => 'over-three-days', 'key' => 'home.tabs.over_three_days.view', 'label' => 'إظهار صفحه المنتجات التي تجاوزت 3 أيام')),
+			array_merge($common, array('tab' => 'shortage', 'key' => 'home.tabs.shortage.view', 'label' => 'إظهار صفحه العجز')),
+			array_merge($common, array('tab' => 'missing-details', 'key' => 'home.tabs.missing_details.view', 'label' => 'إظهار صفحه المنتجات التي تحتاج إضافة تفاصيل')),
+		);
+	}
+
+	private function ensure_home_tab_permissions()
+	{
+		$this->Permissions->ensure_permissions($this->get_home_tab_permissions(), 'home.view');
+	}
 
 
 
@@ -1863,6 +2111,10 @@ class Other extends MY_Controller {
 		$error = '';
 		$success = '';
 
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+
 		$this->check_permission('employees.update');
 		
 		if(isset($_POST['empinfoform'])) 
@@ -1874,7 +2126,6 @@ class Other extends MY_Controller {
 			$user_name        = $this->input->post('user_name', true);
 			$user_email    = $this->input->post('user_email', true);
             $job_number = $this->input->post('job_number', true);
-			$current_user_password = $this->input->post('current_user_password', true);
 			$new_user_password = $this->input->post('new_user_password', true);
 			$confirm_user_password = $this->input->post('confirm_user_password', true);
 
@@ -1885,22 +2136,16 @@ class Other extends MY_Controller {
 					'job_number' => secure_data($job_number),
 	            );
 
-	            $wants_password_change = !empty($current_user_password) || !empty($new_user_password) || !empty($confirm_user_password);
+	            $wants_password_change = !empty($new_user_password) || !empty($confirm_user_password);
 
 	            if ($wants_password_change) {
-	            	if (empty($current_user_password) || empty($new_user_password) || empty($confirm_user_password)) {
-	            		$this->session->set_flashdata('error', 'يجب إدخال كلمة السر القديمة والجديدة وتأكيدها');
+	                if (empty($new_user_password) || empty($confirm_user_password)) {
+	                    $this->session->set_flashdata('error', 'يجب إدخال كلمة السر الجديدة وتأكيدها');
 	            		redirect($this->agent->referrer());
 	            	}
 
 	            	if ($new_user_password !== $confirm_user_password) {
 	            		$this->session->set_flashdata('error', 'كلمة السر الجديدة وتأكيدها غير متطابقين');
-	            		redirect($this->agent->referrer());
-	            	}
-
-	            	$employee = $this->Model_admin->get_user_by_id($user_id);
-	            	if (empty($employee) || md5($current_user_password) !== $employee['user_password']) {
-	            		$this->session->set_flashdata('error', 'كلمة السر القديمة غير صحيحة');
 	            		redirect($this->agent->referrer());
 	            	}
 

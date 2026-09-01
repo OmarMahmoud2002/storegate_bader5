@@ -60,11 +60,11 @@ class Model_store_items_dashboard extends CI_Model {
             item_description,
             item_category,
             item_code,
-            (
-                COUNT(DISTINCT CASE WHEN LOWER(TRIM(serial_control)) != \'no\' THEN serial_number END)
-                +
-                COALESCE(SUM(CASE WHEN LOWER(TRIM(serial_control)) = \'no\' THEN quantity_total END), 0)
-            ) AS total_quantity
+            COUNT(DISTINCT CASE
+                WHEN NULLIF(TRIM(serial_number), \'\') IS NOT NULL
+                    AND UPPER(TRIM(subinventory_code)) IN (\'23012\', \'SAGENT_STK\', \'RESV_23012\')
+                THEN UPPER(TRIM(serial_number))
+            END) AS total_quantity
         ', FALSE);
 
         $this->db->from('current_store_items');
@@ -104,7 +104,11 @@ class Model_store_items_dashboard extends CI_Model {
         $this->db->select('
             COUNT(DISTINCT item_description) as total_products,
             COUNT(DISTINCT item_category) as total_categories,
-            SUM(quantity_total) as total_quantity
+            COUNT(DISTINCT CASE
+                WHEN NULLIF(TRIM(serial_number), \'\') IS NOT NULL
+                    AND UPPER(TRIM(subinventory_code)) IN (\'23012\', \'SAGENT_STK\', \'RESV_23012\')
+                THEN UPPER(TRIM(serial_number))
+            END) as total_quantity
         ', FALSE);
         
         $query = $this->db->get('current_store_items');

@@ -338,10 +338,6 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
                 </div>
                 <div class="password-edit-panel" id="employeePasswordEditPanel" hidden>
                   <div class="inpt">
-                    <label>كلمة السر القديمة</label>
-                    <input type="text" name="current_user_password" class="password-edit-current" placeholder="كلمة السر القديمة" autocomplete="off">
-                  </div>
-                  <div class="inpt">
                     <label>كلمة السر الجديدة</label>
                     <div class="password-field">
                       <input type="text" name="new_user_password" class="password-field__input password-edit-new" placeholder="كلمة السر الجديدة" autocomplete="new-password">

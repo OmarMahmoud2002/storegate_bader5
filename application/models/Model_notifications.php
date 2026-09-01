@@ -39,6 +39,27 @@ class Model_notifications extends CI_Model {
         $this->db->update($this->table, $data, array('id' => $id));
     }
 
+    /**
+     * Marks one notification as read. Scoped by user_id so a session can only
+     * ever flip its own rows, and already-read rows are left untouched.
+     */
+    public function mark_notification_read($id, $user_id)
+    {
+        $this->db->where('id', (int) $id);
+        $this->db->where('user_id', (int) $user_id);
+        $this->db->where('status', 'unread');
+        $this->db->update($this->table, array('status' => 'read'));
+        return $this->db->affected_rows() === 1;
+    }
+
+    public function mark_all_notifications_read($user_id)
+    {
+        $this->db->where('user_id', (int) $user_id);
+        $this->db->where('status', 'unread');
+        $this->db->update($this->table, array('status' => 'read'));
+        return $this->db->affected_rows();
+    }
+
     public function delete_notification($data)
     {
         $rows = $this->get_notifications($data);

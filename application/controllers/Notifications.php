@@ -10,6 +10,17 @@ class Notifications extends MY_Controller {
     }
 
     
+    function mark_read() {
+        $user_id = $this->session->userdata('user_id');
+        if (empty($user_id)) {
+            echo 'denied';
+            return;
+        }
+
+        $this->Notifications->mark_notification_read($this->input->post('noti_id'), $user_id);
+        echo 'read';
+    }
+
     function delete_notification() {
         $id = $this->input->post('noti_id');
         $this->Notifications->delete_notification(array('id' => $id, 'user_id' => $this->session->userdata('user_id')));
