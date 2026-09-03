@@ -261,17 +261,24 @@ class Model_store_items extends CI_Model
     }
 
     /**
-     * Count the distinct serial numbers stored in the three approved
-     * subinventories. Dashboard quantities must not depend on quantity_total,
-     * custody rows, or delivery requests.
+     * إجمالي العرض في القوائم: السيريال يُحسب كقطعة واحدة، والباركود تُجمع كميته.
+     * الحساب محصور في المخازن الثلاثة المعتمدة.
      */
     private function counted_subinventory_serial_total_sql($alias = 'i') {
         return "
             COUNT(DISTINCT CASE
-                WHEN NULLIF(TRIM({$alias}.serial_number), '') IS NOT NULL
+                WHEN LOWER(TRIM({$alias}.serial_control)) = 'yes'
+                    AND NULLIF(TRIM({$alias}.serial_number), '') IS NOT NULL
                     AND UPPER(TRIM({$alias}.subinventory_code)) IN ('23012', 'SAGENT_STK', 'RESV_23012')
                 THEN UPPER(TRIM({$alias}.serial_number))
             END)
+            +
+            COALESCE(SUM(CASE
+                WHEN LOWER(TRIM({$alias}.serial_control)) = 'no'
+                    AND UPPER(TRIM({$alias}.subinventory_code)) IN ('23012', 'SAGENT_STK', 'RESV_23012')
+                THEN GREATEST(COALESCE({$alias}.quantity_total, 0), 0)
+                ELSE 0
+            END), 0)
         ";
     }
 

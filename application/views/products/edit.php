@@ -5,6 +5,7 @@
 $CI =& get_instance();
 $update_basic_permission = $CI->get_permission_enabled('products.update.basic');
 $update_extra_permission = $CI->get_permission_enabled('products.update.extra');
+$hasBarcodeQuantity = $hasNoSerial && count($serials) === 0 && (int) $totalQuantity > 0;
 ?>
 
 <link rel='stylesheet' href='<?= base_url('/public/css/edit_product.css') ?>'>
@@ -66,8 +67,8 @@ $update_extra_permission = $CI->get_permission_enabled('products.update.extra');
                         <i class="bi bi-list-ol"></i>
                     </div>
                     <div class="card-content">
-                        <h6>عدد السيريالات</h6>
-                        <p><?= count($serials) ?></p>
+                        <h6><?= $hasBarcodeQuantity ? 'المتوفر' : 'عدد السيريالات' ?></h6>
+                        <p><?= $hasBarcodeQuantity ? (int) $totalQuantity : count($serials) ?></p>
                     </div>
                 </div>
             </div>
@@ -505,6 +506,8 @@ $update_extra_permission = $CI->get_permission_enabled('products.update.extra');
                             <h5><i class="bi bi-list-ul me-2"></i>قائمة السيريالات</h5>
                             <?php if ($serials): ?>
                                 <span class="serial-count"><span id="visibleSerialCount"><?= count($serials) ?></span> سيريال</span>
+                            <?php elseif ($hasBarcodeQuantity): ?>
+                                <span class="serial-count"><?= (int) $totalQuantity ?> قطعة بدون سيريال</span>
                             <?php endif; ?>
                         </div>
                         <div class="card-body">
@@ -546,6 +549,26 @@ $update_extra_permission = $CI->get_permission_enabled('products.update.extra');
                                 <div id="serialFilterEmpty" class="empty-state serial-filter-empty" hidden>
                                     <div class="empty-icon"><i class="bi bi-funnel"></i></div>
                                     <h6>لا توجد سيريالات في هذا المخزون</h6>
+                                </div>
+                            <?php elseif ($hasBarcodeQuantity): ?>
+                                <div class="serial-inventory-filters" role="group" aria-label="توزيع الكمية حسب المخزون">
+                                    <button type="button" class="serial-inventory-filter sort-button active" aria-pressed="true">
+                                        <span><i class="bi bi-grid-3x3-gap"></i> الكل</span>
+                                        <strong><?= (int) $totalQuantity ?></strong>
+                                    </button>
+                                    <?php foreach (array('23012', 'SAgent_STK', 'RESV_23012') as $inventoryCode): ?>
+                                        <button type="button" class="serial-inventory-filter sort-button" aria-pressed="false">
+                                            <span><i class="bi bi-box-seam"></i> <?= htmlspecialchars($inventoryCode) ?></span>
+                                            <strong><?= isset($stock_breakdown[$inventoryCode]) ? (int) $stock_breakdown[$inventoryCode] : 0 ?></strong>
+                                        </button>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="empty-state">
+                                    <div class="empty-icon">
+                                        <i class="bi bi-upc-scan"></i>
+                                    </div>
+                                    <h6>هذا المنتج باركود موحد</h6>
+                                    <p class="text-muted">الكمية المتاحة مسجلة كعدد قطع، لذلك لا توجد أرقام سيريال منفصلة لهذا المنتج.</p>
                                 </div>
                             <?php else: ?>
                                 <div class="empty-state">
