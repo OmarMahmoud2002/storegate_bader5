@@ -207,10 +207,17 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                                     </th>
                                     
                                     <!-- آخر تحديث -->
-                                    <th>
-                                        <a class="sortable-link" href="javascript:void(0)" aria-disabled="true">
+                                    <th class="<?= $sortColumn == 'quantity_changed_at' ? 'sorted-column' : '' ?>">
+                                        <a class="sortable-link <?= ($sortColumn == 'quantity_changed_at')
+                                                                    ? (strtolower($sortOrder) == 'asc' ? 'text-info' : 'text-danger')
+                                                                    : '' ?>"
+                                            href="?sort=quantity_changed_at&order=<?= ($sortColumn == 'quantity_changed_at' && $sortOrder == 'ASC') ? 'DESC' : 'ASC' ?>">
                                             <span>آخر تحديث</span>
-                                            <i class="bi bi-arrow-down-up inactive-arrow"></i>
+                                            <?php if ($sortColumn == 'quantity_changed_at'): ?>
+                                                <i class="bi bi-caret-<?= strtolower($sortOrder) == 'asc' ? 'up' : 'down' ?>-fill sort-arrow"></i>
+                                            <?php else: ?>
+                                                <i class="bi bi-arrow-down-up inactive-arrow"></i>
+                                            <?php endif; ?>
                                         </a>
                                     </th>
 
@@ -242,6 +249,15 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                                     $item_description = isset($row['item_description']) ? (string) $row['item_description'] : '';
                                     $item_code = isset($row['item_code']) ? (string) $row['item_code'] : '';
                                     $item_category = isset($row['item_category']) ? (string) $row['item_category'] : '';
+
+                                    // اتجاه آخر تغيير في الكمية، لتلوين شارة التاريخ.
+                                    $quantity_change_amount = isset($row['quantity_change_amount']) ? (int) $row['quantity_change_amount'] : 0;
+                                    $last_updated_class = '';
+                                    if ($quantity_change_amount > 0) {
+                                        $last_updated_class = 'last-updated-up';
+                                    } elseif ($quantity_change_amount < 0) {
+                                        $last_updated_class = 'last-updated-down';
+                                    }
                                 ?>
                                     <tr>
                                         <td>
@@ -280,9 +296,10 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                                             </span>
                                         </td>
                                         <td>
-                                            <span class="w-100 last-updated-badge text-dark">
+                                            <span class="w-100 last-updated-badge text-dark <?= $last_updated_class ?>"
+                                                title="<?= htmlspecialchars(quantity_update_note($row), ENT_QUOTES, 'UTF-8') ?>">
                                                 <i class="bi bi-calendar3 me-1"></i>
-                                                --/--/----
+                                                <?= htmlspecialchars(quantity_update_date(isset($row['quantity_changed_at']) ? $row['quantity_changed_at'] : null), ENT_QUOTES, 'UTF-8') ?>
                                             </span>
                                         </td>
                                         <td>

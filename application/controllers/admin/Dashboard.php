@@ -24,13 +24,14 @@ class Dashboard extends MY_Controller {
 		$this->check_permission('products.view');
 
         ////////////////////////////////////////
-		$sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'item_description'; // العمود الافتراضي للفرز
-		$sortOrder  = isset($_GET['order']) ? $_GET['order'] : 'ASC';             // ASC أو DESC
+		$sortColumn = isset($_GET['sort']) ? $_GET['sort'] : 'quantity_changed_at'; // العمود الافتراضي للفرز
+		$sortOrder  = isset($_GET['order']) ? $_GET['order'] : 'DESC';                // ASC أو DESC
 
-		// قائمة الأعمدة المسموح بالفرز عليها
-		$allowedSort = array('item_description', 'item_code', 'item_category', 'total_quantity');
+		// قائمة الأعمدة المسموح بالفرز عليها - مصدرها الموديل حتى لا تفترق عن
+		// تعبيرات SQL المؤهَّلة المستخدمة فعليًا في الاستعلام.
+		$allowedSort = array_keys($this->Store->sortable_columns());
 		if (!in_array($sortColumn, $allowedSort)) {
-			$sortColumn = 'item_description';
+			$sortColumn = 'quantity_changed_at';
 		}
 		$sortOrder = strtoupper($sortOrder) === 'DESC' ? 'DESC' : 'ASC';
 		/////////////////////////////////////////

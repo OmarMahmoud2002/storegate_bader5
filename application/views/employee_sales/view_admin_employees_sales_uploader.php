@@ -38,12 +38,12 @@ $businessDate = $this->session->userdata('business_date');
                     <div class="employee-sales-field">
                         <label for="individuals_date">الأفراد حتى تاريخ</label>
                         <input type="date" name="individuals_date" id="individuals_date"
-                            value="<?= htmlspecialchars($individualsDate ? $individualsDate : '') ?>">
+                            value="<?= htmlspecialchars($individualsDate ? $individualsDate : '') ?>" required>
                     </div>
                     <div class="employee-sales-field">
                         <label for="business_date">الأعمال حتى تاريخ</label>
                         <input type="date" name="business_date" id="business_date"
-                            value="<?= htmlspecialchars($businessDate ? $businessDate : '') ?>">
+                            value="<?= htmlspecialchars($businessDate ? $businessDate : '') ?>" required>
                     </div>
                 </div>
 
@@ -56,7 +56,7 @@ $businessDate = $this->session->userdata('business_date');
                         <span>أو اسحب الملف وأفلته هنا</span>
                     </label>
                 </div>
-                <p class="employee-sales-dropzone-hint">يجب أن يكون الملف بصيغة xlsx, xls ومشابهًا في الهيكل للملف المثال.</p>
+                <p class="employee-sales-dropzone-hint">يجب أن يكون الملف بصيغة xlsx, xls ومشابهًا في الهيكل للملف المثال. شهر الملف يُحدد من «الأفراد حتى تاريخ»، وآخر ملف ترفعه للشهر يصبح النسخة المعتمدة للبحث فيه.</p>
 
                 <button type="submit" class="employee-sales-submit-btn">
                     <i class="bi bi-upload"></i>

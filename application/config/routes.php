@@ -63,6 +63,8 @@ $route['admin/shelves'] = 'admin/shelves';
 $route['admin/shelves/(:any)'] = 'admin/shelves/$1';
 
 $route['admin'] = 'admin/dashboard';
+$route['admin/employees_leaves'] = 'admin/employees_leaves/index';
+$route['admin/employees_leaves/(:any)'] = 'admin/employees_leaves/$1';
 $route['admin/(:any)'] = 'admin/other/$1';
 $route['admin/(:any)/(:any)'] = 'admin/other/$1/$2';
 

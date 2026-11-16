@@ -110,6 +110,9 @@ $can_search = $CI->get_permission_enabled('employees_sales.search');
             <?php if ($can_search): ?>
                 <form action="<?= site_url('admin/process_employee_sales_search') ?>" method="post" class="employee-sales-search-form">
                     <?php echo form_hidden($this->security->get_csrf_token_name(), $this->security->get_csrf_hash()); ?>
+                    <div class="mb-3">
+                        <?php $this->load->view('employee_sales/view_sales_month_select'); ?>
+                    </div>
                     <label for="search_term" class="visually-hidden">أدخل رقم الهوية، الاسم، أو الرقم الوظيفي</label>
                     <div class="employee-sales-search-control">
                         <i class="bi bi-person-badge" aria-hidden="true"></i>

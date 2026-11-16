@@ -346,7 +346,10 @@ tr:not(.no-hover):hover td:last-child {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100500;
+    /* The admin topbar uses z-index: 110000. */
+    z-index: 120000;
+    padding: 16px;
+    box-sizing: border-box;
     opacity: 0;
     visibility: hidden;
     transition: all 0.3s ease;
@@ -357,6 +360,10 @@ tr:not(.no-hover):hover td:last-child {
     visibility: visible;
 }
 
+body.admin-ui-shell.lock-admin-popup-open {
+    overflow: hidden !important;
+}
+
 /* أنماط النافذة المنبثقة للتفاصيل */
 .details-popup-container {
     background-color: white;
@@ -365,8 +372,11 @@ tr:not(.no-hover):hover td:last-child {
     box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
     width: 90%;
     max-width: 720px;
-    max-height: 86vh;
-    overflow-y: auto;
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     position: relative;
     font-family: 'Tajawal', 'Cairo', sans-serif;
     animation: popupFadeIn 0.3s ease;
@@ -378,6 +388,7 @@ tr:not(.no-hover):hover td:last-child {
 }
 
 .details-popup-header {
+    flex-shrink: 0;
     padding: 20px;
     border-bottom: 1px solid #eee;
     text-align: center;
@@ -433,6 +444,9 @@ tr:not(.no-hover):hover td:last-child {
 
 .details-popup-content {
     padding: 20px;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
 }
 
 .stats-container {
@@ -568,16 +582,21 @@ tr:not(.no-hover):hover td:last-child {
     border: 1px solid rgba(226, 232, 240, 0.82);
     border-radius: 18px;
     box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
-    width: min(520px, calc(100% - 28px));
+    width: min(520px, 100%);
     max-width: 520px;
-    max-height: 86vh;
-    overflow-y: auto;
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     position: relative;
     animation: popupFadeIn 0.25s ease;
 }
 
 .search-popup-header {
     display: flex;
+    flex-shrink: 0;
+    gap: 12px;
     justify-content: space-between;
     align-items: center;
     padding: 18px 22px;
@@ -590,6 +609,8 @@ tr:not(.no-hover):hover td:last-child {
 .search-popup-title {
     font-size: 22px;
     font-weight: 900;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .search-popup-close {
@@ -598,6 +619,7 @@ tr:not(.no-hover):hover td:last-child {
     justify-content: center;
     width: 36px;
     height: 36px;
+    flex-shrink: 0;
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.15);
     font-size: 24px;
@@ -613,6 +635,9 @@ tr:not(.no-hover):hover td:last-child {
 
 .search-popup-content {
     padding: 22px;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
 }
 
 .mini-table {
@@ -1054,6 +1079,184 @@ body.admin-ui-shell .admin-ui-lock-admin #salesTable .difference-row td.zero {
         width: max-content !important;
         max-width: none !important;
         min-width: 980px !important;
+    }
+}
+/* End */
+
+/* Add New Feature: تحميل تقفيلة الموظف وتعديل المبالغ اليدوية */
+.search-popup-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.popup-export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.popup-export-btn:hover,
+.popup-export-btn:focus {
+    background: #fff;
+    color: #1d4ed8;
+    text-decoration: none;
+}
+
+.popup-export-btn i {
+    font-size: 15px;
+}
+
+.popup-save-status {
+    display: none;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.popup-save-status.is-visible {
+    display: block;
+}
+
+.popup-save-status.is-success {
+    background: rgba(39, 174, 96, 0.12);
+    border: 1px solid rgba(39, 174, 96, 0.35);
+    color: #1e8449;
+}
+
+.popup-save-status.is-error {
+    background: rgba(231, 76, 60, 0.12);
+    border: 1px solid rgba(231, 76, 60, 0.35);
+    color: #c0392b;
+}
+
+.popup-edit-hint {
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: #64748b;
+    text-align: center;
+}
+
+.mini-table .extra-row td:not(.category) {
+    position: relative;
+}
+
+.extra-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-inline-start: 8px;
+    padding: 0;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 12px;
+    cursor: pointer;
+    vertical-align: middle;
+    transition: all 0.2s;
+}
+
+.extra-edit-btn:hover {
+    background: var(--admin-ui-gradient, linear-gradient(135deg, #667eea, #764ba2));
+    border-color: transparent;
+    color: #fff;
+}
+
+.mini-table td.is-editing .extra-edit-btn,
+.mini-table td.is-editing .extra-value-text {
+    display: none;
+}
+
+.extra-edit-form {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.extra-input {
+    width: 110px;
+    padding: 7px 10px;
+    border: 1px solid rgba(102, 126, 234, 0.55);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    direction: ltr;
+}
+
+.extra-input:focus {
+    outline: none;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.16);
+}
+
+.extra-save-btn,
+.extra-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #fff;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.extra-save-btn {
+    background: var(--success-color);
+}
+
+.extra-cancel-btn {
+    background: #94a3b8;
+}
+
+.extra-save-btn:hover,
+.extra-cancel-btn:hover {
+    opacity: 0.85;
+}
+
+.extra-save-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+@media (max-width: 768px) {
+    .search-popup-header-actions {
+        gap: 6px;
+    }
+
+    .popup-export-btn {
+        padding: 8px 10px;
+        font-size: 13px;
+    }
+
+    .popup-export-btn span {
+        display: none;
+    }
+
+    .extra-input {
+        width: 84px;
     }
 }
 /* End */

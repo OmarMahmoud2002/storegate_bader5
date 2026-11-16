@@ -31,9 +31,279 @@ const productImageCounter = document.getElementById('productImageCounter');
 const stockAvailableButton = document.getElementById('total_quantity');
 const stockBreakdownPopup = document.getElementById('stockBreakdownPopup');
 const stockBreakdownClose = document.querySelector('.stock-breakdown-close');
+const serialNotesRow = document.getElementById('serialNotesRow');
+const serialNotesDetailsList = document.getElementById('serialNotesDetailsList');
+const serialNotesSearchResult = document.getElementById('serialNotesSearchResult');
+const serialNotesSearchList = document.getElementById('serialNotesSearchList');
+const openSerialNoteModalButton = document.getElementById('openSerialNoteModal');
+const serialNoteModal = document.getElementById('serialNoteModal');
+const closeSerialNoteModalButton = document.getElementById('closeSerialNoteModal');
+const cancelSerialNoteModalButton = document.getElementById('cancelSerialNoteModal');
+const serialNoteForm = document.getElementById('serialNoteForm');
+const serialNoteNumber = document.getElementById('serialNoteNumber');
+const serialNoteText = document.getElementById('serialNoteText');
+const serialNoteCharacters = document.getElementById('serialNoteCharacters');
+const serialNoteExistence = document.getElementById('serialNoteExistence');
+const serialNoteFormMessage = document.getElementById('serialNoteFormMessage');
+const saveSerialNoteButton = document.getElementById('saveSerialNote');
+let serialNoteLookupTimer = null;
+let serialNoteLookupRequest = null;
 //
 const appBaseUrl = window.appBaseUrl || (window.location.origin + '/')
 const productsBaseUrl = appBaseUrl + 'admin/products/'
+
+function parse_json_response(data) {
+  if (typeof data === 'string') {
+    return JSON.parse(data);
+  }
+  return data;
+}
+
+function normalize_serial_for_comparison(serial) {
+  const upper = String(serial || '').trim().toUpperCase();
+  const withoutS = upper.replace(/^S/, '');
+  return withoutS || upper;
+}
+
+function render_serial_notes(container, notes) {
+  if (!container) return;
+
+  container.innerHTML = '';
+  const safeNotes = Array.isArray(notes) ? notes : [];
+
+  safeNotes.forEach(function (note) {
+    const item = document.createElement('div');
+    item.className = 'serial-note-item';
+
+    const text = document.createElement('p');
+    text.textContent = note.note || '';
+    item.appendChild(text);
+
+    const meta = document.createElement('div');
+    meta.className = 'serial-note-item-meta';
+
+    const author = document.createElement('span');
+    author.innerHTML = '<i class="bi bi-person" aria-hidden="true"></i> ';
+    author.appendChild(document.createTextNode(note.created_by_name || 'مستخدم النظام'));
+    meta.appendChild(author);
+
+    const date = document.createElement('span');
+    date.innerHTML = '<i class="bi bi-clock" aria-hidden="true"></i> ';
+    date.appendChild(document.createTextNode(note.created_at || ''));
+    meta.appendChild(date);
+
+    item.appendChild(meta);
+    container.appendChild(item);
+  });
+}
+
+function show_product_serial_notes(notes) {
+  const hasNotes = Array.isArray(notes) && notes.length > 0;
+  if (serialNotesRow) {
+    serialNotesRow.classList.toggle('hide', !hasNotes);
+  }
+  render_serial_notes(serialNotesDetailsList, notes);
+}
+
+function hide_noted_serial_result() {
+  if (serialNotesSearchResult) {
+    serialNotesSearchResult.classList.add('hide');
+  }
+  render_serial_notes(serialNotesSearchList, []);
+}
+
+function show_noted_serial_result(serial, notes, message) {
+  show_search_error(message || 'هذا السيريال غير موجود في المخزون، ولكن توجد له ملاحظات');
+  render_serial_notes(serialNotesSearchList, notes);
+  if (serialNotesSearchResult) {
+    serialNotesSearchResult.classList.remove('hide');
+  }
+  $('#serialNumberHistory a').attr('href', productsBaseUrl + 'operations?serial=' + encodeURIComponent(serial));
+  $('#serialNumberHistory').removeClass('hide');
+  serialNumber.disabled = false;
+}
+
+function set_serial_note_existence(state, message, iconClass) {
+  if (!serialNoteExistence) return;
+
+  serialNoteExistence.className = 'serial-note-existence ' + state;
+  const icon = serialNoteExistence.querySelector('i');
+  const text = serialNoteExistence.querySelector('span');
+  if (icon) icon.className = 'bi ' + iconClass;
+  if (text) text.textContent = message;
+}
+
+function show_serial_note_form_message(message, success) {
+  if (!serialNoteFormMessage) return;
+
+  serialNoteFormMessage.textContent = message || '';
+  serialNoteFormMessage.classList.toggle('hide', !message);
+  serialNoteFormMessage.classList.toggle('is-success', !!success);
+}
+
+function lookup_serial_note_context() {
+  if (!serialNoteNumber) return;
+  const serial = serialNoteNumber.value.trim();
+
+  if (serialNoteLookupRequest && serialNoteLookupRequest.readyState !== 4) {
+    serialNoteLookupRequest.abort();
+  }
+
+  if (!serial) {
+    set_serial_note_existence('is-idle', 'اكتب السيريال لمعرفة هل هو موجود أم لا', 'bi-info-circle');
+    return;
+  }
+
+  set_serial_note_existence('is-checking', 'جارٍ التحقق من السيريال...', 'bi-arrow-repeat');
+  serialNoteLookupRequest = $.get(productsBaseUrl + 'serial_note_context?serial=' + encodeURIComponent(serial))
+    .done(function (data) {
+      data = parse_json_response(data);
+      if (data.status !== 'ok') {
+        set_serial_note_existence('is-missing', data.description || 'تعذر التحقق من السيريال', 'bi-exclamation-circle');
+        return;
+      }
+
+      const noteCountText = Number(data.notes_count || 0) > 0
+        ? ' — عليه ' + Number(data.notes_count) + ' ملاحظة سابقة'
+        : '';
+
+      if (data.item_exists) {
+        const productLabel = data.item_name ? ' (' + data.item_name + ')' : '';
+        set_serial_note_existence('is-found', 'السيريال موجود في المخزون' + productLabel + noteCountText, 'bi-check-circle');
+      } else {
+        set_serial_note_existence('is-missing', 'السيريال غير موجود في المخزون، ويمكنك إضافة الملاحظة عليه' + noteCountText, 'bi-exclamation-triangle');
+      }
+    })
+    .fail(function (_xhr, status) {
+      if (status !== 'abort') {
+        set_serial_note_existence('is-missing', 'تعذر التحقق من السيريال الآن', 'bi-exclamation-circle');
+      }
+    });
+}
+
+function open_serial_note_modal() {
+  if (!serialNoteModal) return;
+
+  serialNoteForm.reset();
+  serialNoteCharacters.textContent = '0';
+  show_serial_note_form_message('', false);
+  set_serial_note_existence('is-idle', 'اكتب السيريال لمعرفة هل هو موجود أم لا', 'bi-info-circle');
+
+  const currentSerial = serialNumber ? serialNumber.value.trim() : '';
+  if (currentSerial) {
+    serialNoteNumber.value = currentSerial;
+  }
+
+  serialNoteModal.classList.remove('hide');
+  document.body.style.overflow = 'hidden';
+  serialNoteNumber.focus();
+
+  if (currentSerial) {
+    lookup_serial_note_context();
+  }
+}
+
+function close_serial_note_modal() {
+  if (!serialNoteModal) return;
+  serialNoteModal.classList.add('hide');
+  document.body.style.overflow = '';
+  clearTimeout(serialNoteLookupTimer);
+  if (serialNoteLookupRequest && serialNoteLookupRequest.readyState !== 4) {
+    serialNoteLookupRequest.abort();
+  }
+}
+
+if (openSerialNoteModalButton) {
+  openSerialNoteModalButton.addEventListener('click', open_serial_note_modal);
+}
+
+if (closeSerialNoteModalButton) {
+  closeSerialNoteModalButton.addEventListener('click', close_serial_note_modal);
+}
+
+if (cancelSerialNoteModalButton) {
+  cancelSerialNoteModalButton.addEventListener('click', close_serial_note_modal);
+}
+
+if (serialNoteModal) {
+  serialNoteModal.addEventListener('click', function (event) {
+    if (event.target === serialNoteModal) {
+      close_serial_note_modal();
+    }
+  });
+}
+
+if (serialNoteNumber) {
+  serialNoteNumber.addEventListener('input', function () {
+    clearTimeout(serialNoteLookupTimer);
+    show_serial_note_form_message('', false);
+    serialNoteLookupTimer = setTimeout(lookup_serial_note_context, 350);
+  });
+}
+
+if (serialNoteText) {
+  serialNoteText.addEventListener('input', function () {
+    serialNoteCharacters.textContent = String(serialNoteText.value.length);
+    show_serial_note_form_message('', false);
+  });
+}
+
+if (serialNoteForm) {
+  serialNoteForm.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const serial = serialNoteNumber.value.trim();
+    const note = serialNoteText.value.trim();
+
+    if (!serial) {
+      show_serial_note_form_message('يرجى إدخال رقم السيريال', false);
+      serialNoteNumber.focus();
+      return;
+    }
+
+    if (!note) {
+      show_serial_note_form_message('يرجى كتابة الملاحظة', false);
+      serialNoteText.focus();
+      return;
+    }
+
+    saveSerialNoteButton.disabled = true;
+    saveSerialNoteButton.querySelector('span').textContent = 'جارٍ الحفظ...';
+    show_serial_note_form_message('', false);
+
+    $.post(productsBaseUrl + 'add_serial_note', { serial: serial, note: note })
+      .done(function (data) {
+        data = parse_json_response(data);
+        if (data.status !== 'ok') {
+          show_serial_note_form_message(data.description || 'تعذر حفظ الملاحظة', false);
+          return;
+        }
+
+        show_serial_note_form_message(data.description, true);
+        const savedNormalized = normalize_serial_for_comparison(data.serial);
+        const searchedNormalized = normalize_serial_for_comparison(serialNumber ? serialNumber.value : '');
+        const productNormalized = normalize_serial_for_comparison(product_data.serial || '');
+
+        if (data.item_exists && productNormalized && savedNormalized === productNormalized) {
+          show_product_serial_notes(data.notes);
+        } else if (!data.item_exists && searchedNormalized && savedNormalized === searchedNormalized) {
+          show_noted_serial_result(data.serial, data.notes);
+        }
+
+        if (typeof toastr !== 'undefined') {
+          toastr.success(data.description);
+        }
+
+        setTimeout(close_serial_note_modal, 650);
+      })
+      .fail(function () {
+        show_serial_note_form_message('تعذر الاتصال بالخادم، يرجى المحاولة مرة أخرى', false);
+      })
+      .always(function () {
+        saveSerialNoteButton.disabled = false;
+        saveSerialNoteButton.querySelector('span').textContent = 'حفظ الملاحظة';
+      });
+  });
+}
 
 // show and hide functions
 function showAddToCart() {
@@ -196,6 +466,8 @@ function set_data(data) {
   });
 
   $('#poster_number').text(data['poster_number']);
+  hide_noted_serial_result();
+  show_product_serial_notes(data['notes'] || []);
 
   product_data['name'] = data['name'];
   product_data['id'] = data['id'];
@@ -235,12 +507,13 @@ if (stockBreakdownClose) {
 document.addEventListener('keydown', function (event) {
   if (event.key === 'Escape') {
     close_stock_breakdown();
+    close_serial_note_modal();
   }
 });
 
 function get_product_by_serial(serial) {
   $.get(productsBaseUrl + 'get_product_by_serial?serial=' + encodeURIComponent(serial), function (data) {
-    data = JSON.parse(data);
+    data = parse_json_response(data);
 
     if (data['status'] == 'ok') {
       search_mode = 'serial';
@@ -264,6 +537,11 @@ function get_product_by_serial(serial) {
     } else {
       document.querySelector('#serialNumberError').innerText = data['description'];
       document.querySelector('#serialNumberError').classList.remove('hide');
+      if (Array.isArray(data['notes']) && data['notes'].length > 0) {
+        show_noted_serial_result(data['serial_number'] || serial, data['notes'], data['description']);
+      } else {
+        hide_noted_serial_result();
+      }
       serialNumber.disabled = false;
     }
   })
@@ -312,9 +590,10 @@ function show_search_error(message) {
 // يحدد نوع الرقم المدخل (سريال / جزء سريال / صنف / باركود) ثم ينفذ منطق البحث الخاص به
 function resolve_search_term(term) {
   $.get(productsBaseUrl + 'resolve_search_term?term=' + encodeURIComponent(term), function (data) {
-    data = JSON.parse(data);
+    data = parse_json_response(data);
 
     if (data['status'] != 'ok') {
+      hide_noted_serial_result();
       show_search_error(data['description']);
       serialNumber.disabled = false;
       return;
@@ -332,6 +611,9 @@ function resolve_search_term(term) {
     } else if (data['type'] == 'item_code') {
       search_mode = 'item_code';
       get_product_by_item_code(data['value']);
+    } else if (data['type'] == 'noted_serial') {
+      search_mode = 'serial';
+      show_noted_serial_result(data['value'], data['notes']);
     }
   })
 }
@@ -350,6 +632,8 @@ function nextBtn_handler() {
 
   document.getElementById("serialNumberError").classList.add("hide");
   document.querySelector('#serialNumberHistory').classList.add('hide')
+  hide_noted_serial_result();
+  show_product_serial_notes([]);
 
   if (radios_enabled == true && checkRadio()) {
     disableRadios();

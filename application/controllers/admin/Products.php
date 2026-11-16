@@ -20,12 +20,100 @@ class Products extends MY_Controller
         $this->load->model('Model_requests', 'Requests');
         $this->load->model('Model_sales', 'Sales');
         $this->load->model('Model_operations', 'Operations');
+        $this->load->model('Model_serial_notes', 'SerialNotes');
         $this->load->model('Model_permissions', 'Permissions');
         $this->load->model('Model_settings', 'Settings');
+
+        $this->Permissions->ensure_permissions(array(
+            array(
+                'key' => 'product_search.notes.create',
+                'label' => 'إضافة ملاحظات للسيريال',
+                'type' => 'create',
+                'page_label' => 'البحث عن منتج',
+                'route' => 'admin/products/search',
+                'section_name' => 'الصفحات الرئيسية والمخزون',
+                'section_icon' => 'bi-box-seam',
+            ),
+        ), 'product_search.view');
 
         notifications($this);
         ini_set('memory_limit', '512M');
         date_default_timezone_set('Asia/Riyadh');
+    }
+
+    /**
+     * Reads the report timestamp from A2. The source report sometimes appends
+     * AM/PM to a 24-hour value (for example 17:56:29 PM), so hours above 12
+     * are treated as 24-hour values and the suffix is ignored.
+     */
+    private function getStockReportDate($sheet)
+    {
+        $rawValue = $sheet->getCell('A2')->getValue();
+        $rawValue = html_entity_decode((string) $rawValue, ENT_QUOTES, 'UTF-8');
+        $rawValue = str_replace("\xC2\xA0", ' ', $rawValue);
+        $rawValue = preg_replace('/\s+/', ' ', trim($rawValue));
+
+        if (!preg_match(
+            '/^Report\s*Date\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\s*(AM|PM))?\s*$/i',
+            $rawValue,
+            $matches
+        )) {
+            throw new UnexpectedValueException(
+                'تعذر قراءة تاريخ التقرير من الخلية A2. يجب أن يكون بالشكل: Report Date: 4/4/2026 17:56:29 PM',
+                422
+            );
+        }
+
+        // The Oracle report date is month/day/year.
+        $month = (int) $matches[1];
+        $day = (int) $matches[2];
+        $year = (int) $matches[3];
+        $hour = (int) $matches[4];
+        $minute = (int) $matches[5];
+        $second = (int) $matches[6];
+        $meridiem = isset($matches[7]) ? strtoupper($matches[7]) : '';
+
+        if (!checkdate($month, $day, $year) || $hour > 23 || $minute > 59 || $second > 59) {
+            throw new UnexpectedValueException('تاريخ التقرير الموجود في الخلية A2 غير صحيح.', 422);
+        }
+
+        if ($meridiem !== '' && $hour <= 12) {
+            if ($meridiem === 'AM' && $hour === 12) {
+                $hour = 0;
+            } elseif ($meridiem === 'PM' && $hour < 12) {
+                $hour += 12;
+            }
+        }
+
+        $reportDate = new DateTime('now', new DateTimeZone('Asia/Riyadh'));
+        $reportDate->setDate($year, $month, $day);
+        $reportDate->setTime($hour, $minute, $second);
+
+        return $reportDate;
+    }
+
+    private function formatStockReportAge($ageSeconds)
+    {
+        $days = (int) floor($ageSeconds / 86400);
+        $hours = (int) floor(($ageSeconds % 86400) / 3600);
+        $minutes = (int) floor(($ageSeconds % 3600) / 60);
+
+        if ($days === 0 && $hours === 0) {
+            return $minutes === 0 ? 'أقل من دقيقة' : $minutes . ' دقيقة';
+        }
+
+        $parts = array();
+        if ($days > 0) {
+            $parts[] = $days . ' يوم';
+        }
+        if ($hours > 0) {
+            $parts[] = $hours . ' ساعة';
+        }
+        if ($minutes > 0) {
+            $parts[] = $minutes . ' دقيقة';
+        }
+
+        return implode(' و', $parts);
     }
 
 
@@ -39,20 +127,72 @@ class Products extends MY_Controller
 
         $uploadStatus = '';
         $uploadMessage = '';
+        $uploadReason = '';
+        $requiresConfirmation = false;
 
         if (isset($_FILES['excel_file'])) {
+            // تُملأ قبل أول كتابة، ويُقارَن بها بعد انتهاء الاستيراد لمعرفة
+            // المنتجات التي تغيّرت كميتها فعليًا. تبقى null لو فشل الملف قبل
+            // أي تعديل، فلا نسجّل تغييرًا لم يحدث.
+            $quantitiesBeforeImport = null;
+
             try {
+                if ((int) $_FILES['excel_file']['error'] !== UPLOAD_ERR_OK) {
+                    throw new UnexpectedValueException('لم يكتمل رفع ملف Excel. يرجى اختيار الملف والمحاولة مرة أخرى.', 422);
+                }
+
                 $filePath = $_FILES['excel_file']['tmp_name'];
                 $sourceFilename = isset($_FILES['excel_file']['name'])
                     ? basename((string) $_FILES['excel_file']['name'])
                     : '';
-                $uploadTimestamp = date('Y-m-d H:i:s');
+                if (!in_array(strtolower(pathinfo($sourceFilename, PATHINFO_EXTENSION)), array('xls', 'xlsx'), true)) {
+                    throw new UnexpectedValueException('تم رفض الملف: يجب اختيار ملف Excel بصيغة .xlsx أو .xls. لم يتم تعديل المخزون أو الرفوف.', 422);
+                }
+                if ((int) $_FILES['excel_file']['size'] > 50 * 1024 * 1024) {
+                    throw new UnexpectedValueException('تم رفض الملف: الحجم يتجاوز الحد الأقصى 50 ميجابايت. لم يتم تعديل المخزون أو الرفوف.', 422);
+                }
+                $uploadTime = new DateTime('now', new DateTimeZone('Asia/Riyadh'));
+                $uploadTimestamp = $uploadTime->format('Y-m-d H:i:s');
                 $uploadedBy = $this->session->userdata('user_id');
-                $spreadsheet = IOFactory::load($filePath);
+                try {
+                    $readerType = IOFactory::identify($filePath);
+                    if (!in_array($readerType, array('Xls', 'Xlsx'), true)) {
+                        throw new UnexpectedValueException('Unsupported stock workbook format');
+                    }
+                    $spreadsheet = IOFactory::load($filePath);
+                } catch (Exception $e) {
+                    throw new UnexpectedValueException('تم رفض الملف: تعذر قراءته كملف Excel صحيح. يرجى رفع تقرير المخزون بصيغة .xlsx أو .xls. لم يتم تعديل المخزون أو الرفوف.', 422);
+                }
                 $sheet = $spreadsheet->getActiveSheet();
-                $rows = $sheet->toArray(null, true, true, true);
+                $reportDate = $this->getStockReportDate($sheet);
+                $this->load->helper('stock_import');
+                $rows = stock_import_rows_with_merged_headers($sheet);
+                validate_stock_import_rows($rows);
+                $ageSeconds = $uploadTime->getTimestamp() - $reportDate->getTimestamp();
 
-                // حذف الصفوف من 1 إلى 9 (الرؤوس)
+                // Allow a small clock difference, but reject a report genuinely dated in the future.
+                if ($ageSeconds < -300) {
+                    throw new UnexpectedValueException('تاريخ التقرير الموجود في الخلية A2 لاحق للوقت الحالي. يرجى التحقق من تاريخ الملف.', 422);
+                }
+
+                $ageSeconds = max(0, $ageSeconds);
+                $reportAgeText = $this->formatStockReportAge($ageSeconds);
+
+                if ($ageSeconds >= 6 * 3600) {
+                    throw new UnexpectedValueException(
+                        'تم رفض رفع الملف لأن تاريخه قديم (منذ ' . $reportAgeText . '). برجاء تحديث الملف ثم إعادة رفعه.',
+                        410
+                    );
+                }
+
+                if ($ageSeconds > 3600 && $this->input->post('confirm_old_file') !== '1') {
+                    throw new RuntimeException(
+                        'تاريخ هذا الملف منذ ' . $reportAgeText . '. هل أنت متأكد من متابعة الرفع؟',
+                        409
+                    );
+                }
+
+                // البيانات تبدأ من الصف 11 بعد التحقق من الملف بالكامل.
                 for ($i = 1; $i <= 10; $i++) {
                     unset($rows[$i]);
                 }
@@ -122,20 +262,112 @@ class Products extends MY_Controller
                     }
                 }
 
-                // 1️⃣ حذف السيريالات غير الموجودة أو تصفير الكمية للمنتجات بدون سيريال
+                // نحتفظ بسجل واحد فارغ للسيريال عندما يختفي المنتج بالكامل من
+                // الملف الجديد، حتى يبقى المنتج وبياناته ظاهرين بكمية صفر.
+                $newProductCodes = array();
+                $newSerialProductCodes = array();
+                foreach ($newData as $data) {
+                    $productIdentity = strtoupper(trim((string) $data['item_code']));
+                    if ($productIdentity === '') {
+                        $productIdentity = 'DESC|' . strtoupper(trim((string) $data['item_description']));
+                    }
+                    $newProductCodes[$productIdentity] = true;
+                    if (strtolower(trim((string) $data['serial_control'])) === 'yes') {
+                        $newSerialProductCodes[$productIdentity] = true;
+                    }
+                }
+
+                $serialPlaceholderIds = array();
+                $reusableSerialPlaceholderIds = array();
+                foreach ($currentData as $item) {
+                    if (strtolower(trim((string) $item['serial_control'])) !== 'yes') {
+                        continue;
+                    }
+
+                    $productIdentity = strtoupper(trim((string) $item['item_code']));
+                    if ($productIdentity === '') {
+                        $productIdentity = 'DESC|' . strtoupper(trim((string) $item['item_description']));
+                    }
+
+                    $hasEmptySerial = trim((string) $item['serial_number']) === '';
+                    if ($hasEmptySerial && isset($newSerialProductCodes[$productIdentity])) {
+                        $reusableSerialPlaceholderIds[$productIdentity] = (int) $item['id'];
+                    }
+
+                    if (isset($newProductCodes[$productIdentity])) {
+                        continue;
+                    }
+
+                    if (!isset($serialPlaceholderIds[$productIdentity]) || $hasEmptySerial) {
+                        $serialPlaceholderIds[$productIdentity] = (int) $item['id'];
+                    }
+                }
+
+                $quantitiesBeforeImport = $this->Store->snapshot_counted_quantities();
+
+                // 1️⃣ إزالة السيريالات غير الموجودة مع إبقاء سجل المنتج بكمية صفر،
+                // وتصفير الكمية للمنتجات بدون سيريال.
                 foreach ($currentKeys as $key => $item) {
                     if (!isset($newData[$key])) {
                         if (strtolower($item['serial_control']) === 'yes') {
-                            // حذف السيريال من الجدول
                             $item_id = $item['id'];
+                            $serialNumber = trim((string) $item['serial_number']);
+                            $productIdentity = strtoupper(trim((string) $item['item_code']));
+                            if ($productIdentity === '') {
+                                $productIdentity = 'DESC|' . strtoupper(trim((string) $item['item_description']));
+                            }
+
+                            // آخر سجل للمنتج يتحول إلى سجل تعريفي بدون سيريال،
+                            // وبذلك يظهر المنتج في القوائم بإجمالي كمية صفر.
+                            if (isset($serialPlaceholderIds[$productIdentity])
+                                && (int) $serialPlaceholderIds[$productIdentity] === (int) $item_id) {
+                                if ($serialNumber !== '' || (int) $item['quantity_total'] !== 0) {
+                                    $updatedRows = $this->Store->update_store_item(
+                                        array(
+                                            'serial_number' => null,
+                                            'quantity_total' => 0,
+                                        ),
+                                        array('id' => $item_id)
+                                    );
+
+                                    if ($updatedRows > 0 && $serialNumber !== '') {
+                                        $this->Store->remember_serial_shelf($item, $uploadTimestamp);
+                                        $this->Store->record_stock_movement(
+                                            $item,
+                                            'out',
+                                            $uploadTimestamp,
+                                            $uploadedBy,
+                                            $sourceFilename
+                                        );
+                                    }
+                                }
+
+                                $this->Cart->delete_cart_item(array('item_id' => $item_id));
+                                if ($serialNumber !== '') {
+                                    $this->Store->remove_item_from_shelf(
+                                        $item['item_code'],
+                                        $item['serial_control'],
+                                        $item['serial_number'],
+                                        $item['barcode']
+                                    );
+                                }
+                                continue;
+                            }
+
+                            // لو المنتج عاد بسيريالات في الملف الجديد، نُبقي السجل
+                            // الصفري مؤقتًا لإعادة استخدامه مع أول سيريال جديد.
+                            if ($serialNumber === ''
+                                && isset($reusableSerialPlaceholderIds[$productIdentity])
+                                && (int) $reusableSerialPlaceholderIds[$productIdentity] === (int) $item_id) {
+                                continue;
+                            }
+
+                            // نحذف السيريال القديم نفسه، لكن ليس سجل المنتج التعريفي.
                             $deletedRows = $this->Store->delete_store_item(
-                                array(
-                                    'item_code' => $item['item_code'],
-                                    'item_description' => $item['item_description'],
-                                    'serial_number' => $item['serial_number']
-                                )
+                                array('id' => $item_id)
                             );
-                            if ($deletedRows > 0) {
+                            if ($deletedRows > 0 && $serialNumber !== '') {
+                                $this->Store->remember_serial_shelf($item, $uploadTimestamp);
                                 $this->Store->record_stock_movement(
                                     $item,
                                     'out',
@@ -146,7 +378,9 @@ class Products extends MY_Controller
                             }
 
                             $this->Cart->delete_cart_item(['item_id' => $item_id]);
-                            $this->Store->remove_item_from_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode']);
+                            if ($serialNumber !== '') {
+                                $this->Store->remove_item_from_shelf($item['item_code'], $item['serial_control'], $item['serial_number'], $item['barcode']);
+                            }
 
                         } else {
                             // تصفير الكمية
@@ -168,6 +402,7 @@ class Products extends MY_Controller
                 }
 
                 // 2️⃣ إدخال أو تحديث البيانات الجديدة
+                $usedSerialPlaceholders = array();
                 foreach ($newData as $key => $data) {
                     if (isset($currentKeys[$key])) {
 
@@ -192,6 +427,42 @@ class Products extends MY_Controller
                             )
                         );
                     } else {
+                        $productIdentity = strtoupper(trim((string) $data['item_code']));
+                        if ($productIdentity === '') {
+                            $productIdentity = 'DESC|' . strtoupper(trim((string) $data['item_description']));
+                        }
+
+                        if ($data['serial_control'] === 'yes'
+                            && isset($reusableSerialPlaceholderIds[$productIdentity])
+                            && !isset($usedSerialPlaceholders[$productIdentity])) {
+                            $placeholderId = (int) $reusableSerialPlaceholderIds[$productIdentity];
+                            $updatedRows = $this->Store->update_store_item(
+                                array(
+                                    'subinventory_code' => $data['subinventory_code'],
+                                    'item_category' => $data['item_category'],
+                                    'item_code' => $data['item_code'],
+                                    'item_description' => $data['item_description'],
+                                    'serial_control' => $data['serial_control'],
+                                    'serial_number' => $data['serial_number'],
+                                    'quantity_total' => $data['quantity_total'],
+                                ),
+                                array('id' => $placeholderId)
+                            );
+                            $usedSerialPlaceholders[$productIdentity] = true;
+
+                            if ($updatedRows > 0) {
+                                $this->Store->restore_serial_shelf($data, $uploadTimestamp);
+                                $this->Store->record_stock_movement(
+                                    $data,
+                                    'in',
+                                    $uploadTimestamp,
+                                    $uploadedBy,
+                                    $sourceFilename
+                                );
+                            }
+                            continue;
+                        }
+
                         $insertData = array(
                             'subinventory_code' => $data['subinventory_code'],
                             'item_category' => $data['item_category'],
@@ -203,6 +474,7 @@ class Products extends MY_Controller
                         );
                         $insertedItemId = $this->Store->add_store_item($insertData);
                         if ($insertedItemId && $data['serial_control'] === 'yes') {
+                            $this->Store->restore_serial_shelf($insertData, $uploadTimestamp);
                             $this->Store->record_stock_movement(
                                 $insertData,
                                 'in',
@@ -222,14 +494,50 @@ class Products extends MY_Controller
 
 
             } catch (Exception $e) {
-                $uploadStatus = 'error';
-                $uploadMessage = "حدث خطأ أثناء معالجة الملف: " . $e->getMessage();
+                if ((int) $e->getCode() === 409) {
+                    $uploadStatus = 'warning';
+                    $uploadMessage = $e->getMessage();
+                    $requiresConfirmation = true;
+                } elseif ((int) $e->getCode() === 410) {
+                    $uploadStatus = 'error';
+                    $uploadReason = 'old_file';
+                    $uploadMessage = $e->getMessage();
+                } elseif ((int) $e->getCode() === 422) {
+                    $uploadStatus = 'error';
+                    $uploadMessage = $e->getMessage();
+                } else {
+                    $uploadStatus = 'error';
+                    $uploadMessage = "حدث خطأ أثناء معالجة الملف: " . $e->getMessage();
+                }
 
+            } finally {
+                // حتى لو توقف الاستيراد في المنتصف، ما كُتب فعلًا في المخزون
+                // لازم ينعكس على تاريخ آخر تحديث للكمية.
+                if (is_array($quantitiesBeforeImport)) {
+                    $this->Store->commit_quantity_changes(
+                        $quantitiesBeforeImport,
+                        'رفع ملف التقفيلة',
+                        $uploadedBy,
+                        $uploadTimestamp
+                    );
+                }
             }
         }
 
         $this->data['uploadMessage'] = $uploadMessage;
         $this->data['uploadStatus'] = $uploadStatus;
+
+        if ($this->input->is_ajax_request()) {
+            $this->output
+                ->set_content_type('application/json', 'utf-8')
+                ->set_output(json_encode(array(
+                    'status' => $uploadStatus ?: 'error',
+                    'message' => $uploadMessage ?: 'لم يتم استلام ملف Excel.',
+                    'reason' => $uploadReason,
+                    'requires_confirmation' => $requiresConfirmation,
+                ), JSON_UNESCAPED_UNICODE));
+            return;
+        }
 
         $this->load->view('products/add', $this->data);
     }
@@ -399,6 +707,10 @@ class Products extends MY_Controller
             }
 
 
+            // تغيير serial_control ينقل المنتج بين فرعَي معادلة حساب الكمية
+            // (عدّ سيريالات مقابل جمع quantity_total)، فقد يغيّر الكمية المعروضة.
+            $quantities_before = $this->Store->snapshot_counted_quantities(array($item_code));
+
             $this->Store->update_store_item(
                 [
                     'price' => $price != '' ? $price : null,
@@ -409,6 +721,14 @@ class Products extends MY_Controller
                 [
                     'item_code' => $item_code
                 ]
+            );
+
+            $this->Store->commit_quantity_changes(
+                $quantities_before,
+                'تعديل يدوي للمنتج',
+                $this->session->userdata('user_id'),
+                null,
+                array($item_code)
             );
 
             header("Location:../products/edit?item_code=" . $item_code);
@@ -467,7 +787,7 @@ class Products extends MY_Controller
             $sheet->setCellValue('C' . $rowNumber, $product['item_category']);
             $sheet->setCellValue('D' . $rowNumber, (int) $product['total_quantity']);
             $sheet->setCellValue('E' . $rowNumber, (int) $product['low_quantity']);
-            $sheet->setCellValue('F' . $rowNumber, $product['updated_at']);
+            $sheet->setCellValue('F' . $rowNumber, quantity_update_date($product['quantity_changed_at']));
             $sheet->setCellValue('G' . $rowNumber, 'الكمية منخفضة');
             $rowNumber++;
         }
@@ -508,6 +828,142 @@ class Products extends MY_Controller
             ? $stock_upload_settings['stock_excel_last_uploaded_at']
             : null;
         $this->load->view('products/search', $this->data);
+    }
+
+    /**
+     * نفس قاعدة المطابقة المستخدمة في البحث: السيريال يُقبل بحرف S أو بدونه.
+     */
+    private function find_item_by_serial($serial)
+    {
+        $serial = strtoupper(trim((string) $serial));
+        if ($serial === '') {
+            return null;
+        }
+
+        $without_s = preg_replace('/^S/', '', $serial, 1);
+        $candidates = array_unique(array($serial, $without_s, 'S' . $without_s));
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === '') {
+                continue;
+            }
+
+            $item = $this->Store->get_store_item(array('serial_number' => $candidate));
+            if ($item != null) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    private function input_text_length($value)
+    {
+        return function_exists('mb_strlen')
+            ? mb_strlen((string) $value, 'UTF-8')
+            : strlen((string) $value);
+    }
+
+    /**
+     * يعرض حالة السيريال أثناء الكتابة في نافذة إضافة الملاحظة.
+     */
+    function serial_note_context()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
+
+        $this->check_permission('product_search.notes.create');
+
+        $serial = trim((string) $this->input->get('serial'));
+        if ($serial === '') {
+            echo json_encode(array('status' => 'error', 'description' => 'يرجى إدخال رقم السيريال'));
+            return;
+        }
+
+        $item = $this->find_item_by_serial($serial);
+        $notes = $this->SerialNotes->get_by_serial($serial);
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'serial' => strtoupper($serial),
+            'item_exists' => $item != null,
+            'item_name' => $item != null ? $item['item_description'] : '',
+            'item_code' => $item != null ? $item['item_code'] : '',
+            'notes_count' => count($notes),
+        ));
+    }
+
+    /**
+     * يحفظ الملاحظة ويسجل نفس الحدث في سجل العمليات.
+     */
+    function add_serial_note()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+        }
+
+        $this->check_permission('product_search.notes.create');
+
+        if (strtoupper((string) $this->input->method()) !== 'POST') {
+            echo json_encode(array('status' => 'error', 'description' => 'طريقة الطلب غير صحيحة'));
+            return;
+        }
+
+        $serial = strtoupper(trim((string) $this->input->post('serial')));
+        $note = trim((string) $this->input->post('note'));
+
+        if ($serial === '') {
+            echo json_encode(array('status' => 'error', 'description' => 'يرجى إدخال رقم السيريال'));
+            return;
+        }
+
+        if ($this->input_text_length($serial) > 190) {
+            echo json_encode(array('status' => 'error', 'description' => 'رقم السيريال أطول من الحد المسموح'));
+            return;
+        }
+
+        if ($note === '') {
+            echo json_encode(array('status' => 'error', 'description' => 'يرجى كتابة الملاحظة'));
+            return;
+        }
+
+        if ($this->input_text_length($note) > 2000) {
+            echo json_encode(array('status' => 'error', 'description' => 'الملاحظة يجب ألا تتجاوز 2000 حرف'));
+            return;
+        }
+
+        $item = $this->find_item_by_serial($serial);
+        $note_id = $this->SerialNotes->add_note($serial, $note, $this->session->userdata('user_id'));
+
+        if (!$note_id) {
+            echo json_encode(array('status' => 'error', 'description' => 'تعذر حفظ الملاحظة، يرجى المحاولة مرة أخرى'));
+            return;
+        }
+
+        $operation_saved = $this->Operations->add_operation(array(
+            'item_description' => $item != null ? $item['item_description'] : '',
+            'item_code' => $item != null ? $item['item_code'] : '',
+            'serial' => $item != null ? $item['serial_number'] : $serial,
+            'operation' => 'تم إضافة ملاحظة "' . $note . '"',
+            'sales_order' => '0',
+        ), $this->session->userdata('user_id'));
+
+        if (!$operation_saved) {
+            // جدول العمليات قديم ويعمل بمحرك MyISAM، لذلك نستخدم تعويضًا صريحًا
+            // حتى لا تبقى ملاحظة بلا عملية مقابلة لو فشل الإدخال الثاني.
+            $this->SerialNotes->delete_note($note_id);
+            echo json_encode(array('status' => 'error', 'description' => 'تعذر تسجيل العملية، لم يتم حفظ الملاحظة'));
+            return;
+        }
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'description' => 'تمت إضافة الملاحظة بنجاح',
+            'serial' => $item != null ? $item['serial_number'] : $serial,
+            'item_exists' => $item != null,
+            'notes' => $this->SerialNotes->get_by_serial($serial),
+        ));
     }
 
 
@@ -553,6 +1009,24 @@ class Products extends MY_Controller
 
         // بحث بجزء من السريال (نفس منطق الخانة القديمة: 6 خانات)
         if ($term_length == 6) {
+            // نعطي التطابق الكامل والملاحظة الكاملة أولوية قبل بحث البداية،
+            // حتى يعمل أي سيريال من 6 خانات ولا يختلط بسيريالات أطول.
+            $exact_item = $this->find_item_by_serial($upper_term);
+            if ($exact_item != null) {
+                echo json_encode(['status' => 'ok', 'type' => 'serial', 'value' => $exact_item['serial_number']]);
+                return;
+            }
+
+            if ($this->SerialNotes->has_notes($upper_term)) {
+                echo json_encode([
+                    'status' => 'ok',
+                    'type' => 'noted_serial',
+                    'value' => $upper_term,
+                    'notes' => $this->SerialNotes->get_by_serial($upper_term),
+                ]);
+                return;
+            }
+
             $serial_matches = $this->Store->get_items_by_serialpart($upper_term);
             if (count($serial_matches) > 0) {
                 echo json_encode(['status' => 'ok', 'type' => 'serial_part', 'value' => $upper_term]);
@@ -562,11 +1036,7 @@ class Products extends MY_Controller
 
         // سريال كامل (مع أو بدون حرف S في البداية)
         if ($term_length >= 7) {
-            $item = $this->Store->get_store_item(['serial_number' => $upper_term]);
-
-            if ($item == null) {
-                $item = $this->Store->get_store_item(['serial_number' => preg_replace('/^S/', '', $upper_term, 1)]);
-            }
+            $item = $this->find_item_by_serial($upper_term);
 
             if ($item != null) {
                 echo json_encode(['status' => 'ok', 'type' => 'serial', 'value' => $term]);
@@ -588,6 +1058,17 @@ class Products extends MY_Controller
             return;
         }
 
+        // قد يحمل السيريال ملاحظات حتى لو لم يكن مسجلًا في المخزون.
+        if ($this->SerialNotes->has_notes($term)) {
+            echo json_encode([
+                'status' => 'ok',
+                'type' => 'noted_serial',
+                'value' => strtoupper($term),
+                'notes' => $this->SerialNotes->get_by_serial($term),
+            ]);
+            return;
+        }
+
         // جزء من السريال لأي طول أكبر من 6 خانات
         if ($term_length > 6) {
             $serial_matches = $this->Store->get_items_by_serialpart($upper_term);
@@ -606,20 +1087,20 @@ class Products extends MY_Controller
             redirect(base_url());
         }
 
-        $serialnumber_input = strtoupper($this->input->get('serial'));
+        $serialnumber_input = strtoupper(trim((string) $this->input->get('serial')));
+        $item = $this->find_item_by_serial($serialnumber_input);
 
-        $item_without_s = $this->Store->get_store_item(['serial_number' => $serialnumber_input]);
-        $item_with_s = $this->Store->get_store_item(['serial_number' => preg_replace('/^S/', '', $serialnumber_input, 1)]);
-
-        if ($item_without_s == null && $item_with_s == null) {
-            echo json_encode(['status' => 'error', 'description' => 'السيريال غير موجود']);
+        if ($item == null) {
+            $notes = $this->SerialNotes->get_by_serial($serialnumber_input);
+            echo json_encode([
+                'status' => 'error',
+                'description' => count($notes) > 0
+                    ? 'هذا السيريال غير موجود في المخزون، ولكن توجد له ملاحظات'
+                    : 'السيريال غير موجود',
+                'serial_number' => $serialnumber_input,
+                'notes' => $notes,
+            ]);
             return;
-        }
-
-        if ($item_without_s != null) {
-            $item = $item_without_s;
-        } else if ($item_with_s != null) {
-            $item = $item_with_s;
         }
 
         $serial_number = $item['serial_number'];
@@ -658,7 +1139,8 @@ class Products extends MY_Controller
             'shelf' => $shelf_name,
             'serial_number' => $serial_number,
             'poster_number' => empty($item['poster_number']) ? 'غير محدد' : $item['poster_number'],
-            'images' => $images
+            'images' => $images,
+            'notes' => $this->SerialNotes->get_by_serial($serial_number),
         ];
 
         $custody = $this->Custodys->get_custody(['item_code' => $item['item_code'], 'serial_number' => $item['serial_number']]);

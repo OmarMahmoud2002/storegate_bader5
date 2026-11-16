@@ -11,6 +11,8 @@ $can_add_custody = $CI->get_permission_enabled('product_search.custody.create');
 $can_add_delivery = $CI->get_permission_enabled('product_search.delivery.create');
 $can_return_custody = $CI->get_permission_enabled('product_search.custody.return');
 $can_return_delivery = $CI->get_permission_enabled('product_search.delivery.return');
+$can_upload_products = $CI->get_permission_enabled('products.import');
+$can_add_serial_note = $CI->get_permission_enabled('product_search.notes.create');
 
 $stock_upload_time = !empty($stock_excel_last_uploaded_at) ? strtotime($stock_excel_last_uploaded_at) : false;
 $stock_upload_age_seconds = $stock_upload_time !== false ? max(0, time() - $stock_upload_time) : 0;
@@ -252,9 +254,22 @@ if ($stock_upload_time !== false) {
 <div class='app-content admin-ui-page admin-ui-product-search'>
   <div class='app-content-header'>
     <h1 class='app-content-headerText'>البحث عن منتج</h1>
+    <?php if ($can_add_serial_note): ?>
+      <button type="button" id="openSerialNoteModal" class="serial-note-header-button">
+        <i class="bi bi-chat-left-text" aria-hidden="true"></i>
+        <span>إضافة ملاحظة</span>
+      </button>
+    <?php endif; ?>
   </div>
   <div class="prod_form">
     <form class='formTag product-search-card'>
+      <?php if ($can_upload_products): ?>
+        <a href="<?= base_url('admin/products/add') ?>" class="product-upload-shortcut"
+          title="الانتقال إلى صفحة رفع ملف إكسيل المنتجات">
+          <i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
+          <span>إضافة منتجات</span>
+        </a>
+      <?php endif; ?>
       <div class="search-card-intro">
         <span class="search-card-icon" aria-hidden="true"><i class="bi bi-upc-scan"></i></span>
         <h1>مطابقة رقم التحقق</h1>
@@ -380,6 +395,16 @@ if ($stock_upload_time !== false) {
 
             <p id="serialNumberError" class="hide">يرجى إدخال رقم السريال أو رقم الصنف أو الباركود</p>
             <p id="serialNumberHistory" class='hide'><a>اضغط هنا للمزيد من التفاصيل</a></p>
+            <div id="serialNotesSearchResult" class="serial-notes-search-result hide" aria-live="polite">
+              <div class="serial-notes-result-head">
+                <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                <div>
+                  <strong>السيريال غير موجود في المخزون</strong>
+                  <span>لكن توجد ملاحظات مسجلة عليه</span>
+                </div>
+              </div>
+              <div id="serialNotesSearchList" class="serial-notes-list"></div>
+            </div>
           </div>
           <div class="select_type hide">
             <label>حدد ماتريد البحث عنه</label>
@@ -448,6 +473,10 @@ if ($stock_upload_time !== false) {
                 <td>رقم الملصق</td>
                 <td id='poster_number'></td>
               </tr>
+              <tr id="serialNotesRow" class="hide">
+                <td>ملاحظات السيريال</td>
+                <td><div id="serialNotesDetailsList" class="serial-notes-list serial-notes-list-compact"></div></td>
+              </tr>
             </tbody>
           </table>
           <div class="product-image-frame">
@@ -469,6 +498,52 @@ if ($stock_upload_time !== false) {
     </div>
   </div>
 </div>
+<?php if ($can_add_serial_note): ?>
+  <div id="serialNoteModal" class="serial-note-modal hide" role="dialog" aria-modal="true" aria-labelledby="serialNoteModalTitle">
+    <div class="serial-note-modal-card">
+      <div class="serial-note-modal-head">
+        <div class="serial-note-modal-title">
+          <span><i class="bi bi-chat-left-text" aria-hidden="true"></i></span>
+          <div>
+            <h2 id="serialNoteModalTitle">إضافة ملاحظة على سيريال</h2>
+            <p>يمكن تسجيل الملاحظة حتى لو لم يكن السيريال موجودًا في المخزون.</p>
+          </div>
+        </div>
+        <button type="button" id="closeSerialNoteModal" class="serial-note-modal-close" aria-label="إغلاق">
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+      </div>
+      <form id="serialNoteForm" class="serial-note-form" novalidate>
+        <div class="serial-note-field">
+          <label for="serialNoteNumber">رقم السيريال</label>
+          <div class="serial-note-input-wrap">
+            <i class="bi bi-upc-scan" aria-hidden="true"></i>
+            <input type="text" id="serialNoteNumber" name="serial" maxlength="190" autocomplete="off"
+              placeholder="اكتب رقم السيريال">
+          </div>
+          <div id="serialNoteExistence" class="serial-note-existence is-idle" aria-live="polite">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+            <span>اكتب السيريال لمعرفة هل هو موجود أم لا</span>
+          </div>
+        </div>
+        <div class="serial-note-field">
+          <label for="serialNoteText">الملاحظة</label>
+          <textarea id="serialNoteText" name="note" maxlength="2000" rows="5"
+            placeholder="اكتب الملاحظة هنا..."></textarea>
+          <small><span id="serialNoteCharacters">0</span> / 2000</small>
+        </div>
+        <p id="serialNoteFormMessage" class="serial-note-form-message hide" aria-live="assertive"></p>
+        <div class="serial-note-modal-actions">
+          <button type="button" id="cancelSerialNoteModal" class="serial-note-cancel-button">إلغاء</button>
+          <button type="submit" id="saveSerialNote" class="serial-note-save-button">
+            <i class="bi bi-check2-circle" aria-hidden="true"></i>
+            <span>حفظ الملاحظة</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+<?php endif; ?>
 <div id="stockBreakdownPopup" class="stock-breakdown-popup hide" role="dialog" aria-modal="true" aria-labelledby="stockBreakdownTitle">
   <div class="stock-breakdown-card">
     <div class="stock-breakdown-head">

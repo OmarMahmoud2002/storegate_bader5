@@ -34,7 +34,7 @@
                 <div class='product-cell item-code'><span class="cell-label">رقم الصنف</span><?= htmlspecialchars($product['item_code'], ENT_QUOTES, 'UTF-8') ?></div>
                 <div class='product-cell category'><span class="cell-label">تصنيف المنتج</span><?= $product['item_category'] ?></div>
                 <div class='product-cell quantity'><span class="cell-label">العدد المتبقي</span><?= (int) $product['total_quantity'] ?></div>
-                <div class='product-cell last_updated'><span class="cell-label">آخر تحديث</span><?= $product['updated_at'] ?></div>
+                <div class='product-cell last_updated'><span class="cell-label">آخر تحديث</span><span title="<?= htmlspecialchars(quantity_update_note($product), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(quantity_update_date($product['quantity_changed_at']), ENT_QUOTES, 'UTF-8') ?></span></div>
                 <div class="product-cell status">
                   <span class="cell-label">الحالة</span>
                   <span class="low-stock-badge"><i class="bi bi-exclamation-triangle"></i> الكمية منخفضة</span>

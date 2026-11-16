@@ -103,7 +103,7 @@ $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetab
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script src="<?=base_url('public/js/employees_timetable.js')?>"></script>
+  <script src="<?=base_url('public/js/employees_timetable.js')?>?v=leaves-2"></script>
   <script src="<?=base_url('public/js/script.js')?>"></script>
 </div>
 </div>

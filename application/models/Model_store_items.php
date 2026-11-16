@@ -9,6 +9,8 @@ class Model_store_items extends CI_Model
     protected $table_images;
     protected $serial_history_table;
     protected $stock_movements_table;
+    protected $quantity_updates_table;
+    protected $shelf_returns_table;
 	public function __construct()
 	{
 		parent::__construct();
@@ -17,9 +19,94 @@ class Model_store_items extends CI_Model
         $this->table_images = 'tbl_products_images';
         $this->serial_history_table = 'tbl_product_serial_history';
         $this->stock_movements_table = 'tbl_product_stock_movements';
+        $this->quantity_updates_table = 'tbl_product_quantity_updates';
+        $this->shelf_returns_table = 'tbl_serial_shelf_returns';
         $this->ensure_serial_history_table();
         $this->ensure_stock_movements_table();
+        $this->ensure_quantity_updates_table();
+        $this->ensure_shelf_returns_table();
 	}
+
+    private function ensure_shelf_returns_table() {
+        if ($this->db->table_exists($this->shelf_returns_table)) {
+            return;
+        }
+
+        $this->db->query(
+            "CREATE TABLE IF NOT EXISTS `{$this->shelf_returns_table}` ("
+            . "`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+            . "`serial_number` VARCHAR(191) NOT NULL,"
+            . "`item_code` VARCHAR(120) NOT NULL DEFAULT '',"
+            . "`shelf_id` INT NOT NULL,"
+            . "`absent_since` DATETIME NOT NULL,"
+            . "PRIMARY KEY (`id`),"
+            . "UNIQUE KEY `serial_number_unique` (`serial_number`)"
+            . ") ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        );
+    }
+
+    /** Called only on an actual inventory-file exit, before removing the shelf row. */
+    public function remember_serial_shelf($item, $absent_since) {
+        $serial = strtoupper(trim((string) $item['serial_number']));
+        if ($serial === '' || strtolower(trim((string) $item['serial_control'])) !== 'yes') {
+            return;
+        }
+
+        $shelf_id = $this->get_item_shelf($item['item_code'], $item['serial_number'], isset($item['barcode']) ? $item['barcode'] : null);
+        if (!$shelf_id) {
+            // A new absence without a shelf must not reuse an older location.
+            $this->db->delete($this->shelf_returns_table, array('serial_number' => $serial));
+            return;
+        }
+
+        $this->db->query(
+            "INSERT INTO `{$this->shelf_returns_table}` (`serial_number`, `item_code`, `shelf_id`, `absent_since`) "
+            . "VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE "
+            . "`item_code` = VALUES(`item_code`), `shelf_id` = VALUES(`shelf_id`), `absent_since` = VALUES(`absent_since`)",
+            array($serial, trim((string) $item['item_code']), (int) $shelf_id, $absent_since)
+        );
+    }
+
+    /** Consume the saved absence on return, even if expired or its shelf was deleted. */
+    public function restore_serial_shelf($item, $returned_at) {
+        $serial = strtoupper(trim((string) $item['serial_number']));
+        if ($serial === '' || strtolower(trim((string) $item['serial_control'])) !== 'yes') {
+            return false;
+        }
+
+        $saved = $this->db->get_where($this->shelf_returns_table, array('serial_number' => $serial))->row_array();
+        if (!$saved) {
+            return false;
+        }
+
+        // Parse both dates explicitly in the import timezone, independently of server settings.
+        $timezone = new DateTimeZone('Asia/Riyadh');
+        $absent = new DateTimeImmutable($saved['absent_since'], $timezone);
+        $returned = new DateTimeImmutable($returned_at, $timezone);
+        $elapsed = $returned->getTimestamp() - $absent->getTimestamp();
+        $restored = false;
+        if ($elapsed >= 0 && $elapsed < 14 * 86400
+            && strcasecmp(trim((string) $saved['item_code']), trim((string) $item['item_code'])) === 0) {
+            $shelf = $this->db->get_where('tbl_shelves', array('id' => $saved['shelf_id']))->row_array();
+            $barcode = isset($item['barcode']) ? $item['barcode'] : null;
+            if ($shelf && !$this->get_item_shelf($item['item_code'], $item['serial_number'], $barcode)) {
+                // Read the persisted item: a reused product placeholder can retain its barcode.
+                $current = $this->get_store_item(array('item_code' => $item['item_code'], 'serial_number' => $item['serial_number']));
+                if ($current) {
+                    $restored = (bool) $this->add_item_to_shelf(
+                        $current['item_code'], $current['serial_control'], $current['serial_number'],
+                        $current['barcode'], (int) $saved['shelf_id']
+                    );
+                    if (!$restored) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        $this->db->delete($this->shelf_returns_table, array('id' => $saved['id']));
+        return $restored;
+    }
 
     /**
      * A permanent serial reference prevents product identity from disappearing
@@ -283,6 +370,223 @@ class Model_store_items extends CI_Model
     }
 
     /**
+     * تاريخ آخر تغيّر فعلي في الكمية المعروضة لكل منتج.
+     *
+     * الكمية نفسها ليست عمودًا مخزَّنًا بل ناتج حساب لحظي، لذلك لا يصلح
+     * current_store_items.updated_at كمؤشر عليها: هو يتحرك مع أي تعديل على
+     * الصف (اسم، باركود، رقم بوستر) حتى لو الكمية لم تتغير، ولا يتحرك إطلاقًا
+     * عند حذف آخر سيريال للمنتج. لذلك نحتفظ بالتاريخ في جدول مستقل مفتاحه
+     * item_code، فيبقى محفوظًا حتى لو اختفت كل صفوف المنتج من المخزون الحالي.
+     */
+    private function ensure_quantity_updates_table() {
+        if ($this->db->table_exists($this->quantity_updates_table)) {
+            return;
+        }
+
+        // مطابقة ترتيب المحارف لعمود المصدر ليست تجميلًا: current_store_items
+        // أُنشئ بالترتيب الافتراضي للخادم، فلو ثبّتنا ترتيبًا مختلفًا هنا يفشل
+        // كل JOIN على item_code بخطأ Illegal mix of collations.
+        $charset = $this->column_charset($this->table, 'item_code');
+        $tableCharset = $charset['character_set'] !== ''
+            ? " DEFAULT CHARACTER SET {$charset['character_set']}"
+            : ' DEFAULT CHARACTER SET utf8mb4';
+        $tableCollation = $charset['collation'] !== ''
+            ? " COLLATE {$charset['collation']}"
+            : '';
+
+        $this->db->query(
+            "CREATE TABLE IF NOT EXISTS `{$this->quantity_updates_table}` ("
+            . "`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+            . "`item_code` VARCHAR(120) NOT NULL,"
+            . "`quantity` INT NOT NULL DEFAULT 0,"
+            . "`previous_quantity` INT NOT NULL DEFAULT 0,"
+            . "`change_amount` INT NOT NULL DEFAULT 0,"
+            . "`changed_at` DATETIME NULL DEFAULT NULL,"
+            . "`source` VARCHAR(100) NOT NULL DEFAULT '',"
+            . "`changed_by` INT NULL DEFAULT NULL,"
+            . "PRIMARY KEY (`id`),"
+            . "UNIQUE KEY `item_code_unique` (`item_code`),"
+            . "KEY `changed_at_index` (`changed_at`)"
+            . ") ENGINE=InnoDB" . $tableCharset . $tableCollation
+        );
+
+        $this->seed_quantity_updates_baseline();
+    }
+
+    /**
+     * ترتيب المحارف الفعلي لعمود نصّي، حتى تُبنى الجداول المساعدة مطابقة له
+     * بدل الاعتماد على افتراض قد يختلف بين الخادم المحلي والاستضافة.
+     */
+    private function column_charset($table, $column) {
+        $empty = array('character_set' => '', 'collation' => '');
+
+        $query = $this->db->query(
+            "SELECT CHARACTER_SET_NAME, COLLATION_NAME "
+            . "FROM information_schema.COLUMNS "
+            . "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+            array($table, $column)
+        );
+
+        if (!$query) {
+            return $empty;
+        }
+
+        $row = $query->row_array();
+
+        if (!$row || empty($row['COLLATION_NAME'])) {
+            return $empty;
+        }
+
+        // القيم تأتي من information_schema لا من المستخدم، لكن نُبقيها ضمن
+        // محارف آمنة لأنها تُدرج في نص الاستعلام مباشرة.
+        $safe = '/^[A-Za-z0-9_]+$/';
+
+        return array(
+            'character_set' => preg_match($safe, (string) $row['CHARACTER_SET_NAME']) ? $row['CHARACTER_SET_NAME'] : '',
+            'collation' => preg_match($safe, (string) $row['COLLATION_NAME']) ? $row['COLLATION_NAME'] : '',
+        );
+    }
+
+    /**
+     * خط الأساس عند إنشاء الجدول: الكمية الحالية لكل منتج، وتاريخها من آخر
+     * حركة سيريال مسجَّلة له. المنتجات التي لا تملك تاريخًا موثوقًا تبدأ بـ NULL
+     * وتظهر في الواجهة كـ "—" بدل تلفيق تاريخ غير صحيح.
+     */
+    private function seed_quantity_updates_baseline() {
+        $totalSql = $this->counted_subinventory_serial_total_sql('i');
+        $movementsJoin = '';
+        $lastMovementSelect = 'NULL';
+
+        if ($this->db->table_exists($this->stock_movements_table)) {
+            // جدول الحركات أُنشئ بترتيب محارف ثابت قد يخالف ترتيب المخزون،
+            // فنوحّد جهة الربط صراحةً بدل أن يفشل الاستعلام صامتًا.
+            $collation = $this->column_charset($this->table, 'item_code');
+            $coerce = $collation['collation'] !== '' ? " COLLATE {$collation['collation']}" : '';
+
+            $movementsJoin =
+                "LEFT JOIN ("
+                . "SELECT `item_code`, MAX(`occurred_at`) AS `last_movement_at` "
+                . "FROM `{$this->stock_movements_table}` "
+                . "WHERE NULLIF(TRIM(`item_code`), '') IS NOT NULL "
+                . "GROUP BY `item_code`"
+                . ") AS m ON m.item_code" . $coerce . " = i.item_code ";
+            $lastMovementSelect = 'MAX(m.last_movement_at)';
+        }
+
+        $this->db->query(
+            "INSERT INTO `{$this->quantity_updates_table}` "
+            . "(`item_code`, `quantity`, `previous_quantity`, `change_amount`, `changed_at`, `source`) "
+            . "SELECT i.item_code, {$totalSql}, {$totalSql}, 0, {$lastMovementSelect}, 'تهيئة من سجل حركة المخزون' "
+            . "FROM `{$this->table}` AS i "
+            . $movementsJoin
+            . "WHERE NULLIF(TRIM(i.item_code), '') IS NOT NULL "
+            . "GROUP BY i.item_code "
+            . "ON DUPLICATE KEY UPDATE `item_code` = VALUES(`item_code`)"
+        );
+    }
+
+    /**
+     * لقطة من الكمية المحسوبة لكل منتج، بنفس معادلة العرض تمامًا حتى لا يختلف
+     * التاريخ عن الرقم الظاهر في الشاشة. مرِّر مصفوفة أكواد لقصر اللقطة عليها.
+     */
+    public function snapshot_counted_quantities($item_codes = null) {
+        if (is_array($item_codes) && count($item_codes) === 0) {
+            return array();
+        }
+
+        $this->db->select('i.item_code AS item_code', FALSE);
+        $this->db->select($this->counted_subinventory_serial_total_sql('i') . ' AS total_quantity', FALSE);
+        $this->db->from($this->table . ' AS i');
+        $this->db->where("NULLIF(TRIM(i.item_code), '') IS NOT NULL", null, FALSE);
+
+        if (is_array($item_codes)) {
+            $this->db->where_in('i.item_code', $item_codes);
+        }
+
+        $this->db->group_by('i.item_code');
+
+        $snapshot = array();
+        foreach ($this->db->get()->result_array() as $row) {
+            $snapshot[(string) $row['item_code']] = (int) $row['total_quantity'];
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * يقارن لقطة سابقة بالوضع الحالي ويسجّل تاريخًا جديدًا للمنتجات التي
+     * تغيّرت كميتها فقط. المقارنة على الناتج النهائي وليست على نوع العملية،
+     * فتغطي الحذف والإضافة وتعديل الكمية وتغيير المخزن وتغيير serial_control
+     * دون الحاجة لتعديل أي فرع في منطق الاستيراد الحالي.
+     *
+     * @return int عدد المنتجات التي تغيّرت كميتها
+     */
+    public function commit_quantity_changes($snapshot_before, $source = '', $changed_by = null, $occurred_at = null, $item_codes = null) {
+        if (!is_array($snapshot_before)) {
+            return 0;
+        }
+
+        $snapshot_after = $this->snapshot_counted_quantities($item_codes);
+
+        if ($occurred_at === null || $occurred_at === '') {
+            $occurred_at = date('Y-m-d H:i:s');
+        }
+
+        // الكود الذي اختفى من المخزون الحالي كميته صفر، وليس "بلا تغيير".
+        $codes = array_unique(array_merge(
+            array_keys($snapshot_before),
+            array_keys($snapshot_after)
+        ));
+
+        $changed = 0;
+        foreach ($codes as $item_code) {
+            $previous = isset($snapshot_before[$item_code]) ? (int) $snapshot_before[$item_code] : 0;
+            $current = isset($snapshot_after[$item_code]) ? (int) $snapshot_after[$item_code] : 0;
+
+            if ($previous === $current) {
+                continue;
+            }
+
+            if ($this->save_quantity_update($item_code, $current, $previous, $occurred_at, $source, $changed_by)) {
+                $changed++;
+            }
+        }
+
+        return $changed;
+    }
+
+    private function save_quantity_update($item_code, $quantity, $previous_quantity, $changed_at, $source, $changed_by) {
+        $item_code = trim((string) $item_code);
+
+        if ($item_code === '') {
+            return false;
+        }
+
+        $data = array(
+            'item_code' => $item_code,
+            'quantity' => (int) $quantity,
+            'previous_quantity' => (int) $previous_quantity,
+            'change_amount' => (int) $quantity - (int) $previous_quantity,
+            'changed_at' => $changed_at,
+            'source' => (string) $source,
+            'changed_by' => ($changed_by !== null && $changed_by !== '') ? (int) $changed_by : null,
+        );
+
+        $existing = $this->db
+            ->get_where($this->quantity_updates_table, array('item_code' => $item_code))
+            ->row_array();
+
+        if ($existing) {
+            $this->db->where('id', $existing['id']);
+            $this->db->update($this->quantity_updates_table, $data);
+            return true;
+        }
+
+        $this->db->insert($this->quantity_updates_table, $data);
+        return true;
+    }
+
+    /**
      * إجمالي العرض في الواجهة موزعًا على المخازن الثلاثة المعتمدة فقط.
      * المنتج ذو السيريال يُحسب كسيريال واحد، والمنتج بدون سيريال تُجمع كميته.
      */
@@ -450,8 +754,13 @@ class Model_store_items extends CI_Model
             i.item_code
         ", FALSE);
         $this->db->select($this->counted_subinventory_serial_total_sql('i') . ' AS total_quantity', FALSE);
+        // q مرتبط بـ item_code واحد لواحد، فـ MAX هنا مجرد إرضاء لـ ONLY_FULL_GROUP_BY.
+        $this->db->select('MAX(q.changed_at) AS quantity_changed_at', FALSE);
+        $this->db->select('MAX(q.change_amount) AS quantity_change_amount', FALSE);
+        $this->db->select('MAX(q.previous_quantity) AS quantity_previous', FALSE);
         
         $this->db->from($this->table . ' AS i');
+        $this->db->join($this->quantity_updates_table . ' AS q', 'q.item_code = i.item_code', 'left');
         
         if (!empty($searchName)) {
             $this->db->group_start();
@@ -465,7 +774,8 @@ class Model_store_items extends CI_Model
         }
         
         $this->db->group_by(array('i.item_description', 'i.item_category', 'i.item_code'));
-        $this->db->order_by($sortColumn, $sortOrder);
+        // item_code موجود في الجدولين بعد الـ join، فلازم عمود الفرز يكون مؤهَّلًا.
+        $this->db->order_by($this->sortable_column_expression($sortColumn), $sortOrder);
         $this->db->limit($limit, $start);
         
 
@@ -473,9 +783,32 @@ class Model_store_items extends CI_Model
         return $query->result_array();
     }
 
+    /**
+     * الأعمدة المسموح الفرز بها في قائمة المنتجات، مربوطة بتعبير SQL مؤهَّل.
+     */
+    public function sortable_columns() {
+        return array(
+            'item_description' => 'i.item_description',
+            'item_category' => 'i.item_category',
+            'item_code' => 'i.item_code',
+            'total_quantity' => 'total_quantity',
+            'quantity_changed_at' => 'quantity_changed_at',
+        );
+    }
+
+    private function sortable_column_expression($sortColumn) {
+        $columns = $this->sortable_columns();
+
+        return isset($columns[$sortColumn])
+            ? $columns[$sortColumn]
+            : $columns['item_description'];
+    }
+
 
     public function get_low_products() {
         $totalQuantitySql = $this->counted_subinventory_serial_total_sql('i');
+        // i.updated_at يتحرك مع أي تعديل على الصف، فلا يصلح كـ "آخر تحديث للكمية".
+        // نأخذ التاريخ من جدول تتبّع الكمية الذي لا يُكتب إلا عند تغيّر فعلي.
         // جلب البيانات مع تجميع العدد - CodeIgniter Query Builder (PHP 5.6 compatible)
         $sql = "
             SELECT
@@ -483,10 +816,11 @@ class Model_store_items extends CI_Model
                 i.item_category,
                 i.item_code,
                 MAX(i.low_quantity) AS low_quantity,
-                MAX(i.updated_at) AS updated_at,
+                MAX(q.changed_at) AS quantity_changed_at,
                 {$totalQuantitySql} AS total_quantity
 
             FROM current_store_items i
+            LEFT JOIN {$this->quantity_updates_table} q ON q.item_code = i.item_code
 
             GROUP BY
                 i.item_description,

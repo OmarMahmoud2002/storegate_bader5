@@ -1051,7 +1051,7 @@
     <div class="container-fluid py-4">
         <!-- عرض الملف المرفوع والتواريخ -->
         <?php
-        $file_uploaded_name = $this->Variables->getdata('uploaded_file_name');
+        $file_uploaded_name = isset($file_uploaded_name) ? $file_uploaded_name : 'غير محدد';
         $individualsDate = $this->session->userdata('individuals_date');
         $businessDate = $this->session->userdata('business_date');
         if ($file_uploaded_name):
@@ -1072,24 +1072,21 @@
                         <?php endif; ?>
                     </div>
                     <form class="col-md-4" method="post" action="<?= base_url('admin/process_employee_sales_search') ?>">
-                        <div class="d-flex align-items-center justify-content-end gap-2">
-                            <label for="previousDataDate" class="mb-0" style="white-space: nowrap;">
-                                <strong>البيانات السابقة بتاريخ:</strong>
-                            </label>
-                            <input type="date"
-                                id="previousDataDate"
-                                class="form-control form-control-sm"
-                                style="max-width: 150px;"
-                                placeholder="اختر التاريخ"
-                                name="individuals_date">
+                        <?= form_hidden($this->security->get_csrf_token_name(), $this->security->get_csrf_hash()) ?>
+                        <div class="d-flex flex-wrap align-items-end justify-content-end gap-2">
+                            <div class="flex-grow-1">
+                                <?php $this->load->view('employee_sales/view_sales_month_select'); ?>
+                            </div>
                             <button type="submit"
                                     id="searchPreviousDataBtn"
                                     class="btn btn-sm btn-primary"
+                                    aria-label="بحث في الشهر المختار"
                                     title="بحث عن البيانات السابقة"
                                     style="white-space: nowrap;">
                                 <i class="fas fa-search"></i>
                             </button>
-                            <input type="hidden" name="search_term" value="<?= $search_term_value ? $search_term_value : '' ?>">
+                            <input type="hidden" name="search_term" value="<?= htmlspecialchars(!empty($employee_data['employee_info']['emp_id']) ? $employee_data['employee_info']['emp_id'] : ($search_term_value ? $search_term_value : '')) ?>">
+                            <input type="hidden" name="calculation_method" value="<?= (int) ($employee_data['calculation_method'] ?? 1) ?>">
                         </div>
                     </form>
                 </div>
@@ -1099,6 +1096,8 @@
         <!-- نموذج البحث -->
         <div class="search-form">
             <form action="<?= base_url('admin/process_employee_sales_search') ?>" method="post" class="row g-3 align-items-center">
+                <?= form_hidden($this->security->get_csrf_token_name(), $this->security->get_csrf_hash()) ?>
+                <input type="hidden" name="sales_month" value="<?= htmlspecialchars($selected_sales_month ?? '') ?>">
                 <div class="col-md-9">
                     <input type="text" name="search_term" class="form-control form-control-lg" 
                             placeholder="ابحث باستخدام الاسم، رقم الهوية، أو الرقم الوظيفي" 
@@ -1218,6 +1217,8 @@
                         <?php if ($showCalculationMethod): ?>
                             <div class="col-md-6">
                                 <form action = '<?= base_url('admin/process_employee_sales_search') ?>' method = 'post'>
+                                    <?= form_hidden($this->security->get_csrf_token_name(), $this->security->get_csrf_hash()) ?>
+                                    <input type="hidden" name="sales_month" value="<?= htmlspecialchars($selected_sales_month ?? '') ?>">
                                     <input type = 'hidden' name = 'search_term' value = '<?= htmlspecialchars($employee_data['employee_info']['emp_id'] ? $employee_data['employee_info']['emp_id'] : '') ?>'>
                                     <div class="d-flex align-items-center justify-content-end">
                                         <label for="calculation_method" class="form-label mb-0 ms-3" style="font-weight: 600; color: #2c3e50; font-size:20px;">طريقة احتساب المبيعات:</label>

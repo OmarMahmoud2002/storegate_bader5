@@ -57,3 +57,46 @@ function formatColName($name) {
 function shortenString($string, $length) {
     return strlen($string) > $length ? substr($string, 0, $length) . '...' : $string;
 }
+
+/**
+ * تاريخ آخر تغيّر فعلي في كمية المنتج.
+ * القيمة قد تكون فارغة للمنتجات التي لم يُرصد لها تغيير بعد، فنعرض شرطة
+ * بدل تلفيق تاريخ لا يعبّر عن حركة حقيقية.
+ */
+function quantity_update_date($value, $placeholder = '—')
+{
+    $value = trim((string) $value);
+
+    if ($value === '' || strpos($value, '0000-00-00') === 0) {
+        return $placeholder;
+    }
+
+    $timestamp = strtotime($value);
+
+    return $timestamp ? date('d/m/Y', $timestamp) : $placeholder;
+}
+
+/**
+ * شرح مختصر يظهر عند الوقوف على تاريخ آخر تحديث: الوقت الكامل ومقدار التغيير.
+ */
+function quantity_update_note($row)
+{
+    $changed_at = isset($row['quantity_changed_at']) ? trim((string) $row['quantity_changed_at']) : '';
+
+    if ($changed_at === '') {
+        return 'لم يُرصد تغيير في الكمية بعد';
+    }
+
+    $timestamp = strtotime($changed_at);
+    $note = 'آخر تغيير في الكمية: ' . ($timestamp ? date('d/m/Y H:i', $timestamp) : $changed_at);
+
+    $amount = isset($row['quantity_change_amount']) ? (int) $row['quantity_change_amount'] : 0;
+
+    if ($amount !== 0) {
+        $previous = isset($row['quantity_previous']) ? (int) $row['quantity_previous'] : 0;
+        $note .= ' — من ' . $previous . ' إلى ' . ($previous + $amount)
+            . ' (' . ($amount > 0 ? 'زيادة ' : 'نقص ') . abs($amount) . ')';
+    }
+
+    return $note;
+}

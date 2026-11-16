@@ -109,7 +109,7 @@ class Model_operations extends CI_Model {
             'date_created' => date('Y-m-d H:i:s')
         );
 
-        $this->db->insert($this->table, $operationData);
+        return $this->db->insert($this->table, $operationData);
     }
 
 }

@@ -6,6 +6,35 @@ let selectedYear = parseInt(localStorage.getItem('selectedYear')) || new Date().
 let selectedWeek = localStorage.getItem('selectedWeek') || '0';
 let currentCell = null;
 let scheduleData = {};
+let employeeLeaves = [];
+let employeeLeaveOverrides = {};
+
+function matchingEmployeeLeaves(id, dateStr) {
+  return employeeLeaves.filter(leave => dateStr >= leave.start_date && dateStr <= leave.end_date &&
+    (Number(leave.all_employees) === 1 || leave.employee_ids.map(Number).includes(Number(id))));
+}
+
+function leaveSignature(matching) {
+  return matching.map(leave => Number(leave.id)).sort((a, b) => a - b).join(',');
+}
+
+function getEmployeeCell(id, dateStr) {
+  const matching = matchingEmployeeLeaves(id, dateStr);
+  if (matching.length) {
+    const override = employeeLeaveOverrides[`${id}_${dateStr}`];
+    if (override && override.signature === leaveSignature(matching)) return override;
+    return {type: 'leave', status: 'إجازة — ' + [...new Set(matching.map(leave => leave.name))].join(' / '), managedLeave: true};
+  }
+  return scheduleData[`${id}_${dateStr}`] || {};
+}
+
+function escapeScheduleText(value) {
+  return String(value || '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+}
+
+function scheduleDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 let supervisorsData = {}; // بيانات المشرفين
 
 function get_employees() {
@@ -55,8 +84,16 @@ function loadTimetableData() {
     get_employees(),
     get_supervisors(),
     get_schedule(),
+    getEmployeeLeaves(),
     get_supervisors_schedule()
   );
+}
+
+function getEmployeeLeaves() {
+  return $.get('employees_leaves/data', data => {
+    employeeLeaves = data.leaves;
+    employeeLeaveOverrides = data.overrides || {};
+  }, 'json');
 }
 // إضافة متغير للتحكم في عرض جميع الأسابيع
 let showAllWeeks = false;
@@ -65,14 +102,19 @@ let showAllWeeks = false;
 let downloadBtn;
 
 // دالة لحفظ البيانات في localStorage
-function saveScheduleData() {
-  $.post('save_user_schedule', { scheduleData: JSON.stringify(scheduleData) }, function(response) {
+function saveScheduleData(key, entry) {
+  const payload = key ? { [key]: entry } : scheduleData;
+  function restoreSavedData(message) {
+    alert(message);
+    $.when(get_schedule(), getEmployeeLeaves()).done(renderTable);
+  }
+  $.post('save_user_schedule', { scheduleData: JSON.stringify(payload), changed_key: key || '' }, function(response) {
     response = typeof response === 'string' ? JSON.parse(response) : response;
     if (response.success == false) {
-      alert(response.message);
+      restoreSavedData(response.message);
       return;
     }
-  });
+  }).fail(() => restoreSavedData('تعذر حفظ الحالة، حاول مرة أخرى.'));
 }
 
 // دالة لحفظ بيانات المشرفين في localStorage
@@ -131,6 +173,7 @@ function normalizeScheduleType(cellData) {
 }
 
 function getScheduleCellClass(cellData) {
+  if (cellData && cellData.managedLeave) return ' bg-leave managed-leave';
   switch (normalizeScheduleType(cellData)) {
     case 'am': return ' bg-am';
     case 'pm': return ' bg-pm';
@@ -142,7 +185,7 @@ function getScheduleCellClass(cellData) {
 
 // دالة للتحقق من وجود الأسبوع الخامس في الشهر
 function checkFifthWeekExists(month) {
-  const year = new Date().getFullYear();
+  const year = selectedYear;
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   
@@ -240,11 +283,11 @@ const renderTable = () => {
                     <tr>
                       <td class="align-middle text-center table-primary fw-bold employee-name-col">${emp.name}</td>
                       ${dates.map(date => {
-                        const dateStr = date.toISOString().split('T')[0];
-                        const cellData = scheduleData[`${emp.id}_${dateStr}`] || {};
+                        const dateStr = scheduleDate(date);
+                        const cellData = getEmployeeCell(emp.id, dateStr);
                         let cellClass = 'align-middle text-center';
                         cellClass += getScheduleCellClass(cellData);
-                        return `<td class="${cellClass}" style="cursor: pointer" data-date="${date.toISOString()}" data-employee="${emp.name}" data-employeeid="${emp.id}">${cellData.status || ''}</td>`;
+                        return `<td class="${cellClass}" style="cursor: pointer" data-date="${date.toISOString()}" data-employee="${escapeScheduleText(emp.name)}" data-employeeid="${emp.id}">${escapeScheduleText(cellData.status)}</td>`;
                       }).join('')}
                     </tr>
                   `).join('')}
@@ -271,11 +314,11 @@ const renderTable = () => {
                   <tr>
                     <td class="align-middle text-center bg-am fw-bold">AM</td>
                     ${dates.map(date => {
-                      const dateStr = date.toISOString().split('T')[0];
+                      const dateStr = scheduleDate(date);
                       let amCount = 0;
                       employees.forEach(emp => {
                         const key = `${emp.id}_${dateStr}`;
-                        const cellData = scheduleData[key] || {};
+                        const cellData = getEmployeeCell(emp.id, dateStr);
                         if (normalizeScheduleType(cellData) === 'am') amCount++;
                       });
                       return `<td class="text-center time-am time-cell bg-am">${amCount}</td>`;
@@ -284,11 +327,11 @@ const renderTable = () => {
                   <tr>
                     <td class="align-middle text-center bg-pm fw-bold">PM</td>
                     ${dates.map(date => {
-                      const dateStr = date.toISOString().split('T')[0];
+                      const dateStr = scheduleDate(date);
                       let pmCount = 0;
                       employees.forEach(emp => {
                         const key = `${emp.id}_${dateStr}`;
-                        const cellData = scheduleData[key] || {};
+                        const cellData = getEmployeeCell(emp.id, dateStr);
                         if (normalizeScheduleType(cellData) === 'pm') pmCount++;
                       });
                       return `<td class="text-center time-pm time-cell bg-pm">${pmCount}</td>`;
@@ -297,11 +340,11 @@ const renderTable = () => {
                   <tr>
                     <td class="align-middle text-center bg-leave fw-bold">أجازه</td>
                     ${dates.map(date => {
-                      const dateStr = date.toISOString().split('T')[0];
+                      const dateStr = scheduleDate(date);
                       let leaveCount = 0;
                       employees.forEach(emp => {
                         const key = `${emp.id}_${dateStr}`;
-                        const cellData = scheduleData[key] || {};
+                        const cellData = getEmployeeCell(emp.id, dateStr);
                         if (normalizeScheduleType(cellData) === 'leave') leaveCount++;
                       });
                       return `<td class="text-center leave time-cell bg-leave">${leaveCount}</td>`;
@@ -310,11 +353,11 @@ const renderTable = () => {
                   <tr>
                     <td class="align-middle text-center bg-note fw-bold">ملاحظه</td>
                     ${dates.map(date => {
-                      const dateStr = date.toISOString().split('T')[0];
+                      const dateStr = scheduleDate(date);
                       let noteCount = 0;
                       employees.forEach(emp => {
                         const key = `${emp.id}_${dateStr}`;
-                        const cellData = scheduleData[key] || {};
+                        const cellData = getEmployeeCell(emp.id, dateStr);
                         if (normalizeScheduleType(cellData) === 'note') noteCount++;
                       });
                       return `<td class="text-center note time-cell bg-note">${noteCount}</td>`;
@@ -350,7 +393,7 @@ const renderTable = () => {
                       <tr>
                         <td class="align-middle text-center table-primary fw-bold">${sup.name}</td>
                         ${dates.map(date => {
-                          const dateStr = date.toISOString().split('T')[0];
+                          const dateStr = scheduleDate(date);
                           const cellData = supervisorsData[`${sup.id}_${dateStr}`] || {};
                           let cellClass = 'align-middle text-center';
                           cellClass += getScheduleCellClass(cellData);
@@ -404,11 +447,11 @@ const renderTable = () => {
                 <tr>
                   <td class="align-middle text-center table-primary fw-bold employee-name-col">${emp.name}</td>
                   ${dates.map(date => {
-                    const dateStr = date.toISOString().split('T')[0];
-                    const cellData = scheduleData[`${emp.id}_${dateStr}`] || {};
+                    const dateStr = scheduleDate(date);
+                    const cellData = getEmployeeCell(emp.id, dateStr);
                     let cellClass = 'align-middle text-center';
                     cellClass += getScheduleCellClass(cellData);
-                    return `<td class="${cellClass}" style="cursor: pointer" data-date="${date.toISOString()}" data-employee="${emp.name}" data-employeeid="${emp.id}">${cellData.status || ''}</td>`;
+                    return `<td class="${cellClass}" style="cursor: pointer" data-date="${date.toISOString()}" data-employee="${escapeScheduleText(emp.name)}" data-employeeid="${emp.id}">${escapeScheduleText(cellData.status)}</td>`;
                   }).join('')}
                 </tr>
               `).join('')}
@@ -434,11 +477,11 @@ const renderTable = () => {
               <tr>
                 <td class="align-middle text-center bg-am fw-bold">AM</td>
                 ${dates.map(date => {
-                  const dateStr = date.toISOString().split('T')[0];
+                  const dateStr = scheduleDate(date);
                   let amCount = 0;
                   employees.forEach(emp => {
                     const key = `${emp.id}_${dateStr}`;
-                    const cellData = scheduleData[key] || {};
+                    const cellData = getEmployeeCell(emp.id, dateStr);
                     if (normalizeScheduleType(cellData) === 'am') amCount++;
                   });
                   return `<td class="text-center time-am time-cell bg-am">${amCount}</td>`;
@@ -447,11 +490,11 @@ const renderTable = () => {
               <tr>
                 <td class="align-middle text-center bg-pm fw-bold">PM</td>
                 ${dates.map(date => {
-                  const dateStr = date.toISOString().split('T')[0];
+                  const dateStr = scheduleDate(date);
                   let pmCount = 0;
                   employees.forEach(emp => {
                     const key = `${emp.id}_${dateStr}`;
-                    const cellData = scheduleData[key] || {};
+                    const cellData = getEmployeeCell(emp.id, dateStr);
                     if (normalizeScheduleType(cellData) === 'pm') pmCount++;
                   });
                   return `<td class="text-center time-pm time-cell bg-pm">${pmCount}</td>`;
@@ -460,11 +503,11 @@ const renderTable = () => {
               <tr>
                 <td class="align-middle text-center bg-leave fw-bold">أجازه</td>
                 ${dates.map(date => {
-                  const dateStr = date.toISOString().split('T')[0];
+                  const dateStr = scheduleDate(date);
                   let leaveCount = 0;
                   employees.forEach(emp => {
                     const key = `${emp.id}_${dateStr}`;
-                    const cellData = scheduleData[key] || {};
+                    const cellData = getEmployeeCell(emp.id, dateStr);
                     if (normalizeScheduleType(cellData) === 'leave') leaveCount++;
                   });
                   return `<td class="text-center leave time-cell bg-leave">${leaveCount}</td>`;
@@ -473,11 +516,11 @@ const renderTable = () => {
               <tr>
                 <td class="align-middle text-center bg-note fw-bold">ملاحظه</td>
                 ${dates.map(date => {
-                  const dateStr = date.toISOString().split('T')[0];
+                  const dateStr = scheduleDate(date);
                   let noteCount = 0;
                   employees.forEach(emp => {
                     const key = `${emp.id}_${dateStr}`;
-                    const cellData = scheduleData[key] || {};
+                    const cellData = getEmployeeCell(emp.id, dateStr);
                     if (normalizeScheduleType(cellData) === 'note') noteCount++;
                   });
                   return `<td class="text-center note time-cell bg-note">${noteCount}</td>`;
@@ -513,7 +556,7 @@ const renderTable = () => {
                 <tr>
                   <td class="align-middle text-center table-primary fw-bold">${sup.name}</td>
                   ${dates.map(date => {
-                    const dateStr = date.toISOString().split('T')[0];
+                    const dateStr = scheduleDate(date);
                     const cellData = supervisorsData[`${sup.id}_${dateStr}`] || {};
                     let cellClass = 'align-middle text-center';
                     cellClass += getScheduleCellClass(cellData);
@@ -747,7 +790,7 @@ function updateCell(cell, status, cellType) {
   const name = cell.dataset.supervisor || cell.dataset.employee;
   const id = cell.dataset.supervisorid || cell.dataset.employeeid;
   const date = new Date(cell.dataset.date);
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = scheduleDate(date);
   const key = `${id}_${dateStr}`;
 
   // تحديث البيانات
@@ -755,8 +798,14 @@ function updateCell(cell, status, cellType) {
     supervisorsData[key] = { status, type: cellType };
     saveSupervisorsData();
   } else {
-    scheduleData[key] = { status, type: cellType };
-    saveScheduleData();
+    const entry = { status, type: cellType };
+    const matching = matchingEmployeeLeaves(id, dateStr);
+    if (matching.length) {
+      employeeLeaveOverrides[key] = { ...entry, signature: leaveSignature(matching) };
+    } else {
+      scheduleData[key] = entry;
+    }
+    saveScheduleData(key, entry);
   }
 
   // إعادة عرض الجداول مباشرة
@@ -767,8 +816,13 @@ function clearCell(cell) {
   const type = cell.dataset.supervisor ? 'supervisor' : 'employee';
   const id = cell.dataset.supervisorid || cell.dataset.employeeid;
   const date = new Date(cell.dataset.date);
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = scheduleDate(date);
   const key = `${id}_${dateStr}`;
+
+  if (type === 'employee' && matchingEmployeeLeaves(id, dateStr).length) {
+    updateCell(cell, '', '');
+    return;
+  }
 
   if (type === 'supervisor') {
     delete supervisorsData[key];
@@ -1013,7 +1067,7 @@ function updateTimeDistributionTable() {
 
   // حساب التوزيع لكل يوم
   dates.forEach((date, dayIndex) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = scheduleDate(date);
     let amCount = 0;
     let pmCount = 0;
     let leaveCount = 0;
@@ -1021,7 +1075,7 @@ function updateTimeDistributionTable() {
 
     employees.forEach(emp => {
       const key = `${emp.id}_${dateStr}`;
-      const cellData = scheduleData[key] || {};
+      const cellData = getEmployeeCell(emp.id, dateStr);
       
       switch(normalizeScheduleType(cellData)) {
         case 'am':

@@ -281,6 +281,7 @@ class Other extends MY_Controller {
 
 		$this->check_permission('roles.view');
 		$this->ensure_home_tab_permissions();
+		$this->ensure_product_search_note_permission();
 
 		$this->data['permission_groups'] = $this->get_admin_permissions_catalog();
 		
@@ -410,6 +411,7 @@ class Other extends MY_Controller {
 							['key' => 'product_search.delivery.create', 'label' => 'تسليم للتوصيل', 'type' => 'special', 'checked' => true],
 							['key' => 'product_search.custody.return', 'label' => 'إرجاع من عهدة', 'type' => 'special', 'checked' => true],
 							['key' => 'product_search.delivery.return', 'label' => 'إرجاع من التوصيل', 'type' => 'special', 'checked' => true],
+							['key' => 'product_search.notes.create', 'label' => 'إضافة ملاحظات للسيريال', 'type' => 'create', 'checked' => true],
 						],
 					],
 					[
@@ -559,6 +561,8 @@ class Other extends MY_Controller {
 						'route' => 'admin/lock-admin',
 						'permissions' => [
 							['key' => 'lock_admin.view', 'label' => 'عرض التقفيلة', 'type' => 'view'],
+							['key' => 'lock_admin.update', 'label' => 'تعديل تمارا والمحفظة والرصيد الإضافي', 'type' => 'update'],
+							['key' => 'lock_admin.download', 'label' => 'تحميل تقفيلة موظف', 'type' => 'special'],
 						],
 					],
 					[
@@ -622,6 +626,21 @@ class Other extends MY_Controller {
 	private function ensure_home_tab_permissions()
 	{
 		$this->Permissions->ensure_permissions($this->get_home_tab_permissions(), 'home.view');
+	}
+
+	private function ensure_product_search_note_permission()
+	{
+		$this->Permissions->ensure_permissions(array(
+			array(
+				'key' => 'product_search.notes.create',
+				'label' => 'إضافة ملاحظات للسيريال',
+				'type' => 'create',
+				'page_label' => 'البحث عن منتج',
+				'route' => 'admin/products/search',
+				'section_name' => 'الصفحات الرئيسية والمخزون',
+				'section_icon' => 'bi-box-seam',
+			),
+		), 'product_search.view');
 	}
 
 
@@ -1016,6 +1035,31 @@ class Other extends MY_Controller {
 		$this->load->view('view_admin_employees',$this->data);
 	}  
 
+	private function prepare_employee_sales_month() {
+		$month = $this->session->userdata('employee_sales_month');
+		$record = $month ? $this->EmployeesSales->get_latest_upload_for_month($month) : null;
+		if (!$month) {
+			$current = $this->EmployeesSales->get_upload_record_by_filepath($this->Variables->getdata('uploaded_file_path'));
+			if ($current) {
+				$month = substr($current->individuals_date, 0, 7);
+				$record = $this->EmployeesSales->get_latest_upload_for_month($month);
+			}
+		}
+		$this->data['sales_months'] = $this->EmployeesSales->get_available_months();
+		$this->data['selected_sales_month'] = $month;
+		$this->data['file_uploaded_name'] = $record ? $record->filename : 'غير محدد';
+		if ($this->session->userdata('employee_data') && (!$record ||
+			$this->session->userdata('employee_sales_result_filepath') !== $record->filepath)) {
+			$this->session->unset_userdata('employee_data');
+			$this->data['employee_data'] = null;
+		}
+		if ($record) {
+			$this->session->set_userdata('individuals_date', $record->individuals_date);
+			$this->session->set_userdata('business_date', $record->business_date);
+		}
+		return $record;
+	}
+
 	function employees_sales_search() {
 		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
 			redirect(base_url());
@@ -1047,16 +1091,17 @@ class Other extends MY_Controller {
 
 		$data = array(
 			'employee_data' => $this->session->userdata('employee_data'), // للحفاظ على بيانات الموظف المعروض
-			'search_error' => $this->session->flashdata('error'),
+			'search_error' => $this->session->flashdata('search_error') ?: $this->session->flashdata('error'),
 			'search_term_value' => $searchTerm, // لإعادة ملء حقل البحث
 			'file_uploaded_name' => ($this->Variables->getdata('uploaded_file_name')) ? $this->Variables->getdata('uploaded_file_name') : 'الملف المرفوع'
 		);
 
 		$this->data = array_merge($this->data, $data);
+		$this->prepare_employee_sales_month();
 
 
 		// إذا كانت هناك بيانات موظف، اعرض صفحة النتائج
-		if ($data['employee_data']) {
+		if ($this->data['employee_data']) {
             $this->load->view('employee_sales/view_admin_employee_sales_details', $this->data);
 			return;
         }
@@ -1080,6 +1125,7 @@ class Other extends MY_Controller {
 		}
 			
 		
+		$this->prepare_employee_sales_month();
 		$this->load->view('employee_sales/view_admin_search_employees_sales', $this->data);
 	}
 
@@ -1095,6 +1141,16 @@ class Other extends MY_Controller {
 
 	public function handle_employees_sales_upload()
     {
+		$individualsDate = $this->input->post('individuals_date');
+		$businessDate = $this->input->post('business_date');
+		foreach ([$individualsDate, $businessDate] as $uploadDate) {
+			$date = is_string($uploadDate) ? \DateTime::createFromFormat('!Y-m-d', $uploadDate) : false;
+			if (!$date || $date->format('Y-m-d') !== $uploadDate) {
+				$this->session->set_flashdata('upload_error', 'يرجى إدخال تاريخ صحيح للأفراد والأعمال. شهر الملف يُحدد من تاريخ الأفراد.');
+				redirect(base_url('admin/employees_sales_upload'));
+				return;
+			}
+		}
 		$original_filename = $_FILES['userfile']['name'];
 
 		// اسم تخزين فريد لكل رفعة (تاريخ+وقت+عشوائي+الاسم الأصلي مُطهَّرًا) بدل استخدام الاسم
@@ -1149,10 +1205,16 @@ class Other extends MY_Controller {
 				$successMessage .= ' (تنبيه: ' . implode('، ', $validation['warnings']) . ')';
 			}
 
+			if (!$this->EmployeesSales->insert_upload_record($filepath, $original_filename, $individualsDate, $businessDate)) {
+				@unlink($filepath);
+				$this->session->set_flashdata('upload_error', 'تعذر حفظ سجل الملف. يرجى إعادة المحاولة.');
+				redirect(base_url('admin/employees_sales_upload'));
+				return;
+			}
 			$this->session->set_flashdata('upload_success', $successMessage);
 			$this->Variables->setdata('uploaded_file_path', $filepath);
 			$this->Variables->setdata('uploaded_file_name', $original_filename);
-			$this->EmployeesSales->insert_upload_record($filepath, $original_filename, $individualsDate, $businessDate);
+			$this->session->set_userdata('employee_sales_month', substr($individualsDate, 0, 7));
 
 			$this->session->unset_userdata('employee_data');
 			$this->session->unset_userdata('search_term');
@@ -1174,46 +1236,33 @@ class Other extends MY_Controller {
 
 	public function process_employee_sales_search()
     {
-        $filePath = $this->Variables->getdata('uploaded_file_path');
+        $month = $this->input->post('sales_month');
+        if ($month !== null && $month !== '') {
+            if (!is_string($month) || !preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/D', $month)) {
+                $this->session->set_flashdata('search_error', 'يرجى اختيار شهر صحيح.');
+                $this->session->unset_userdata('employee_data');
+                redirect(base_url('admin/employees_sales_search'));
+                return;
+            }
+            $this->session->set_userdata('employee_sales_month', $month);
+        }
+        $uploadRecord = $this->prepare_employee_sales_month();
+        $filePath = $uploadRecord ? $uploadRecord->filepath : null;
         $searchTerm = trim((string) $this->input->post('search_term'));
 		$calculation_method = $this->input->post('calculation_method') ? $this->input->post('calculation_method') : 1;
-		$individualsDate = $this->input->post('individuals_date');
         
         // تخزين مصطلح البحث لإعادة ملء الحقل في حالة الخطأ أو عدم العثور
         $this->session->set_userdata('search_term_repopulate', $searchTerm);
 
 
         if (!$filePath || !file_exists($filePath)) {
-            $this->session->set_flashdata('upload_error', 'ملف البيانات غير موجود. يرجى إعادة رفع الملف.');
-			$this->Variables->remdata('uploaded_file_path');
-			$this->Variables->remdata('uploaded_file_name');
+            $this->session->set_flashdata('search_error', 'لا يوجد ملف متاح للشهر المحدد. يرجى اختيار شهر آخر أو إعادة رفع ملف هذا الشهر.');
             $this->session->unset_userdata(['employee_data']);
-            redirect(base_url('admin/employees_sales_upload'));
+            redirect(base_url('admin/employees_sales_search'));
+            return;
         }
 
-		if ($individualsDate) {
-			$upload_record = $this->EmployeesSales->get_upload_record_by_date($individualsDate);
-			if (!$upload_record) {
-				$this->session->set_flashdata('search_error', 'لا يوجد سجل رفع مطابق لتاريخ الأفراد المحدد.');
-				$this->session->unset_userdata('employee_data');
-				redirect(base_url('admin/employees_sales_search'));
-			}
-			$filepath = $upload_record->filepath;
-			$filename = $upload_record->filename;
-			$this->Variables->setdata('uploaded_file_path', $filepath);
-			$this->Variables->setdata('uploaded_file_name', $filename);
-			$this->session->set_userdata('individuals_date', $individualsDate);
-			$this->session->set_userdata('business_date', $upload_record->business_date);
-			$filePath = $filepath;
-		} else {
-			$uploadRecord = $this->EmployeesSales->get_upload_record_by_filepath($filePath);
-			$individualsDate = $uploadRecord->individuals_date;
-			$this->Variables->setdata('uploaded_file_path', $filePath);
-			$this->Variables->setdata('uploaded_file_name', $uploadRecord->filename);
-			$this->session->set_userdata('individuals_date', $individualsDate);
-			$this->session->set_userdata('business_date', $uploadRecord->business_date);
-			$filePath = $filePath;
-		}
+		$individualsDate = $uploadRecord->individuals_date;
 
 		if (empty($searchTerm)) {
             $this->session->set_flashdata('search_error', 'يرجى إدخال نص للبحث.');
@@ -1394,6 +1443,7 @@ class Other extends MY_Controller {
 
             if ($found) {
                 $this->session->set_userdata('employee_data', $employeeData);
+                $this->session->set_userdata('employee_sales_result_filepath', $filePath);
                 $this->session->unset_userdata('search_term_repopulate');
             } else {
                 $this->session->set_flashdata('search_error', 'لم يتم العثور على موظف بالمعلومات المقدمة (رقم الموظف، رقم الهوية، الاسم، أو كود المستخدم): ' . htmlspecialchars($searchTerm));
@@ -1434,7 +1484,8 @@ class Other extends MY_Controller {
             return;
         }
 
-        $filePath = $this->Variables->getdata('uploaded_file_path');
+        $uploadRecord = $this->prepare_employee_sales_month();
+        $filePath = $uploadRecord ? $uploadRecord->filepath : null;
 
         // الحصول على البيانات من الطلب
         $empId = $this->input->post('emp_id');
@@ -1540,6 +1591,9 @@ class Other extends MY_Controller {
 		
 		$this->check_permission('employees_sales.search');
 		
+		$this->prepare_employee_sales_month();
+		$this->data['employee_data'] = $this->session->userdata('employee_data');
+		$this->data['search_term_value'] = $this->session->userdata('search_term_repopulate');
 		$this->load->view('employee_sales/view_admin_employee_sales_details', $this->data);
 	}
 
@@ -1823,10 +1877,24 @@ class Other extends MY_Controller {
 
 		if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 			$scheduleData = json_decode($this->input->post('scheduleData'), true);
+			if (!is_array($scheduleData)) {
+				echo json_encode(['success' => false, 'message' => 'بيانات الجدول غير صحيحة']);
+				return;
+			}
+			$this->load->model('Model_employee_leaves', 'Leaves');
+			$leaves = $this->Leaves->get_all();
+			$employee_ids = array_map('intval', array_column($this->Model_admin->getemployees(), 'user_id'));
+			$changed_key = (string) $this->input->post('changed_key');
+			$success = true;
 
 			foreach ($scheduleData as $key => $info) {
-				$user_id = explode('_', $key)[0];
-				$date = explode('_', $key)[1];
+				if (!preg_match('/^(\d+)_(\d{4}-\d{2}-\d{2})$/', $key, $parts) || !is_array($info) ||
+					!isset($info['type'], $info['status']) || !in_array($info['type'], array('am', 'pm', 'leave', 'note', 'add', 'store', 'event', 'off', ''), true) || !is_string($info['status'])) {
+					echo json_encode(['success' => false, 'message' => 'بيانات الجدول غير صحيحة']);
+					return;
+				}
+				$user_id = $parts[1];
+				$date = $parts[2];
 				$type = $scheduleData[$key]['type'];
 
 				$data = [
@@ -1836,8 +1904,18 @@ class Other extends MY_Controller {
 					'description' => $scheduleData[$key]['status']
 				];
 
-				$this->Schedule->update_schedule($data);
+				$signature = in_array((int) $user_id, $employee_ids, true) ? $this->Leaves->signature($leaves, $user_id, $date) : '';
+				if ($signature !== '') {
+					// Only an explicitly edited cell may override a managed holiday.
+					// Older clients posting the entire timetable must not create exceptions.
+					if ($changed_key === $key) {
+						$success = $this->Leaves->save_override($data, $signature) && $success;
+					}
+				} else {
+					$success = $this->Schedule->update_schedule($data) && $success;
+				}
 			}
+			echo json_encode(['success' => $success, 'message' => $success ? '' : 'تعذر حفظ الحالة، حاول مرة أخرى']);
 
 		}
 	}
@@ -2489,12 +2567,198 @@ class Other extends MY_Controller {
 		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
 		    redirect(base_url());
 		}
-		
+
+		$this->ensure_lock_admin_permissions();
 		$this->check_permission('lock_admin.view');
-		
+
 		$this->data['excel'] = $this->Excel_import_model->select();
         $this->load->view('view_admin_lock_admin',$this->data);
 	}
+
+	/**
+	 * Register the التقفيلة permissions added after the page shipped so older
+	 * databases do not fail the check_permission() lookup. Roles that can
+	 * already open the page keep working until an admin narrows them.
+	 */
+	private function ensure_lock_admin_permissions()
+	{
+		$this->Permissions->ensure_permissions(array(
+			array(
+				'key' => 'lock_admin.update',
+				'label' => 'تعديل تمارا والمحفظة والرصيد الإضافي',
+				'type' => 'update',
+				'page_label' => 'التقفيلة',
+				'route' => 'admin/lock-admin',
+				'section_name' => 'الشحنات والتقفيلة والنماذج',
+				'section_icon' => 'bi-truck',
+			),
+			array(
+				'key' => 'lock_admin.download',
+				'label' => 'تحميل تقفيلة موظف',
+				'type' => 'special',
+				'page_label' => 'التقفيلة',
+				'route' => 'admin/lock-admin',
+				'section_name' => 'الشحنات والتقفيلة والنماذج',
+				'section_icon' => 'bi-truck',
+			),
+		), 'lock_admin.view');
+	}
+
+	/**
+	 * Store one of the manual closing amounts (تمارا / المحفظة / رصيد إضافي)
+	 * for a single employee and day, and hand back the recalculated الفروقات
+	 * so the open popup and the report table stay in step.
+	 */
+	function lock_admin_save_extra()
+	{
+		$this->output->set_content_type('application/json');
+
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			$this->output->set_status_header(403);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'غير مصرح لك بهذا الإجراء'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		$this->ensure_lock_admin_permissions();
+		if (!$this->get_permission_enabled('lock_admin.update')) {
+			$this->output->set_status_header(403);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'ليس لديك صلاحية تعديل هذه المبالغ'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		$this->load->model('Model_lock_extras');
+		$this->load->helper('lock_admin');
+
+		$user_id = (int) $this->input->post('user_id', true);
+		$date = trim((string) $this->input->post('date', true));
+		$field = trim((string) $this->input->post('field', true));
+		$amount = $this->input->post('amount', true);
+
+		$fields = Model_lock_extras::$fields;
+
+		if ($user_id < 1 || !isset($fields[$field])) {
+			$this->output->set_status_header(400);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'بيانات غير صحيحة'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		$parsed_date = DateTime::createFromFormat('Y-m-d', $date);
+		if (!$parsed_date || $parsed_date->format('Y-m-d') !== $date) {
+			$this->output->set_status_header(400);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'التاريخ غير صحيح'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		if (!is_numeric($amount)) {
+			$this->output->set_status_header(400);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'من فضلك أدخل مبلغًا صحيحًا'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		$date_start = trim((string) $this->input->post('date_start', true));
+		$date_end = trim((string) $this->input->post('date_end', true));
+		if ($date_start === '') {
+			$date_start = $date;
+		}
+		if ($date_end === '') {
+			$date_end = $date;
+		}
+
+		$parsed_start = DateTime::createFromFormat('Y-m-d', $date_start);
+		$parsed_end = DateTime::createFromFormat('Y-m-d', $date_end);
+		if (
+			!$parsed_start || $parsed_start->format('Y-m-d') !== $date_start
+			|| !$parsed_end || $parsed_end->format('Y-m-d') !== $date_end
+			|| $date_start > $date_end
+			|| $date < $date_start || $date > $date_end
+		) {
+			$this->output->set_status_header(400);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'نطاق التاريخ غير صحيح'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		$amount = round((float) $amount, 2);
+		$saved = $this->Model_lock_extras->replace_range_total(
+			$user_id,
+			$date_start,
+			$date_end,
+			$date,
+			$field,
+			$amount,
+			$this->session->userdata('user_id')
+		);
+		if (!$saved) {
+			$this->output->set_status_header(500);
+			$this->output->set_output(json_encode(array('status' => 'error', 'message' => 'تعذر حفظ المبلغ'), JSON_UNESCAPED_UNICODE));
+			return;
+		}
+
+		$breakdown = lock_admin_employee_breakdown($user_id, $date_start, $date_end);
+
+		$this->output->set_output(json_encode(array(
+			'status' => 'ok',
+			'field' => $field,
+			'amount' => (float) $breakdown[$field],
+			'difference' => (float) $breakdown['difference'],
+		), JSON_UNESCAPED_UNICODE));
+	}
+
+	/**
+	 * Formatted per-employee التقفيلة workbook, mirroring the popup rows.
+	 */
+	function lock_admin_export()
+	{
+		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+			redirect(base_url());
+		}
+
+		$this->ensure_lock_admin_permissions();
+		$this->check_permission('lock_admin.download');
+
+		$this->load->helper('lock_admin');
+
+		$user_id = (int) $this->input->get('user_id', true);
+		$date_start = trim((string) $this->input->get('date_start', true));
+		$date_end = trim((string) $this->input->get('date_end', true));
+
+		if ($date_start === '') {
+			$date_start = date('Y-m-d');
+		}
+		if ($date_end === '') {
+			$date_end = date('Y-m-d');
+		}
+
+		$employee = $this->Model_admin->get_user_by_id($user_id);
+		if (empty($employee)) {
+			$this->session->set_flashdata('error', 'الموظف غير موجود');
+			redirect(base_url().MOD_VALUE.'admin/lock-admin');
+		}
+
+		$breakdown = lock_admin_employee_breakdown($user_id, $date_start, $date_end);
+		$spreadsheet = lock_admin_build_workbook($employee, $breakdown, $date_start, $date_end);
+
+		$employee_number = '';
+		if (!empty($employee['job_number'])) {
+			$employee_number = $employee['job_number'];
+		} else if (isset($employee['user_employee_Id'])) {
+			$employee_number = $employee['user_employee_Id'];
+		}
+
+		$file_slug = preg_replace('/[^a-z0-9_]/i', '', (string) $employee_number);
+		if ($file_slug === '') {
+			$file_slug = (string) $user_id;
+		}
+		$file_name = 'lock_admin_' . $file_slug . '_' . $date_start . '_' . $date_end . '.xlsx';
+
+		header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+		header('Content-Disposition: attachment;filename="' . $file_name . '"');
+		header('Cache-Control: max-age=0');
+
+		$writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+		$writer->save('php://output');
+		exit;
+	}
+
 	
 	
 	function upload_form()

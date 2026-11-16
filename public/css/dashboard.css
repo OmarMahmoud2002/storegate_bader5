@@ -453,6 +453,18 @@ body {
     font-weight: 700;
 }
 
+/* اتجاه آخر تغيير في الكمية: أخضر للزيادة، أحمر للنقص، والأزرق الافتراضي
+   للمنتجات التي لم يُرصد لها تغيير بعد. */
+.last-updated-badge.last-updated-up {
+    background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
+    border-color: #86efac;
+}
+
+.last-updated-badge.last-updated-down {
+    background: linear-gradient(135deg, #fee2e2 0%, #ffe4e6 100%);
+    border-color: #fca5a5;
+}
+
 .quantity-badge, .quantity-badge-danger {
     background: var(--warning-gradient);
     color: white;

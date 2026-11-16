@@ -266,6 +266,125 @@ body {
   animation: successPulse 0.6s ease-in-out;
 }
 
+/* Report age confirmation popup */
+.report-age-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.report-age-popup.is-open {
+  display: flex;
+}
+
+.admin-ui-page .report-age-popup .report-age-popup-content {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: min(100%, 480px);
+  margin: 0;
+  padding: 30px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 65px rgba(15, 23, 42, 0.28);
+  text-align: center;
+  transform: none;
+  animation: reportPopupIn 0.22s ease-out;
+}
+
+.report-age-popup-close {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 16px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.report-age-popup-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  background: #fff7ed;
+  color: #f59e0b;
+  font-size: 30px;
+}
+
+.report-age-popup.is-rejected .report-age-popup-icon {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.report-age-popup.is-rejected h3 {
+  color: #b91c1c;
+}
+
+.report-age-popup h3 {
+  margin: 0 0 12px;
+  color: #1e293b;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.report-age-popup p {
+  margin: 0;
+  color: #475569;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.report-age-popup-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.report-age-popup-actions .btn {
+  min-width: 130px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+@keyframes reportPopupIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-ui-page .report-age-popup .report-age-popup-content {
+    padding: 26px 18px 20px;
+  }
+
+  .report-age-popup-actions {
+    flex-direction: column-reverse;
+  }
+
+  .report-age-popup-actions .btn {
+    width: 100%;
+  }
+}
+
 @keyframes successPulse {
   0% {
     transform: scale(1);

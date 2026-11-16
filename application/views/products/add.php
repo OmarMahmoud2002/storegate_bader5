@@ -3,7 +3,7 @@
 <?php $this->load->view('view_header'); ?>
 <?php $this->load->view('view_admin_sidebar');?>
 
-<link href="<?= base_url('/public/css/add.css') ?>" rel="stylesheet">
+<link href="<?= base_url('/public/css/add.css') ?>?v=<?= filemtime(FCPATH . 'public/css/add.css') ?>" rel="stylesheet">
 
 <div class = 'app-content admin-ui-page admin-ui-product-form admin-ui-form-shell'>
     <!-- Header -->
@@ -27,10 +27,12 @@
                 
                 <!-- Status Messages -->
                 <?php if ($uploadStatus): ?>
-                <div class="alert alert-<?= $uploadStatus === 'success' ? 'success' : 'danger' ?> alert-dismissible fade show shadow-sm" role="alert">
+                <div class="alert alert-<?= $uploadStatus === 'success' ? 'success' : ($uploadStatus === 'warning' ? 'warning' : 'danger') ?> <?= $uploadStatus === 'error' ? '' : 'alert-dismissible' ?> fade show shadow-sm" role="alert" <?= $uploadStatus === 'error' ? 'data-stock-upload-error="true"' : '' ?>>
                     <i class="bi bi-<?= $uploadStatus === 'success' ? 'check-circle-fill' : 'exclamation-triangle-fill' ?> me-2"></i>
                     <?= htmlspecialchars($uploadMessage) ?>
+                    <?php if ($uploadStatus !== 'error'): ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
 
@@ -76,7 +78,7 @@
                             <!-- Progress Bar -->
                             <div id="progressContainer" class="d-none mb-4">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="fw-bold">جاري الرفع...</span>
+                                    <span class="fw-bold" id="progressTitle">جاري الرفع...</span>
                                     <span id="progressPercent">0%</span>
                                 </div>
                                 <div class="progress progress-animated">
@@ -111,13 +113,21 @@
                                 <i class="bi bi-check-circle-fill text-success me-2"></i>
                                 تأكد من أن الملف بصيغة Excel (.xlsx أو .xls)
                             </li>
-                            <li class="mb-2">
+                            <!-- <li class="mb-2">
                                 <i class="bi bi-check-circle-fill text-success me-2"></i>
                                 سيتم حذف البيانات القديمة واستبدالها بالجديدة
+                            </li> -->
+                            <li class="mb-2">
+                                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                عناوين الأعمدة A إلى G في الصف 10، وبيانات المنتجات تبدأ من الصف 11
                             </li>
                             <li class="mb-2">
                                 <i class="bi bi-check-circle-fill text-success me-2"></i>
-                                سيتم تجاهل الصفوف من 1 إلى 9 والعناصر بدون رقم تسلسلي
+                                ترتيب الأعمدة: كود المخزون، التصنيف، كود المنتج، الوصف، Yes/No، السريال، الكمية. يُرفض الملف غير المطابق قبل تعديل المخزون
+                            </li>
+                            <li class="mb-2">
+                                <i class="bi bi-clock-history text-warning me-2"></i>
+                                يجب أن تحتوي الخلية A2 على تاريخ التقرير؛ الملفات بعمر 6 ساعات أو أكثر لا يمكن رفعها
                             </li>
                             <li>
                                 <i class="bi bi-check-circle-fill text-success me-2"></i>
@@ -137,7 +147,25 @@
             <p class="mb-0">© 2024 نظام إدارة المخزون - جميع الحقوق محفوظة</p>
         </div>
     </footer>
+
+    <div class="popup report-age-popup" id="staleFilePopup" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="staleFilePopupTitle">
+        <div class="popup-content report-age-popup-content" dir="rtl">
+            <button type="button" class="close report-age-popup-close" id="staleFilePopupClose" aria-label="إغلاق">&times;</button>
+            <div class="report-age-popup-icon" id="staleFilePopupIcon" aria-hidden="true">
+                <i class="bi bi-clock-history"></i>
+            </div>
+            <h3 id="staleFilePopupTitle">تنبيه: تاريخ الملف قديم</h3>
+            <p id="staleFilePopupMessage"></p>
+            <div class="report-age-popup-actions">
+                <button type="button" class="btn btn-outline-secondary" id="cancelStaleUpload">إلغاء</button>
+                <button type="button" class="btn btn-gradient-primary" id="confirmStaleUpload">
+                    <i class="bi bi-cloud-upload-fill me-1"></i>
+                    متابعة الرفع
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 </div>
 
-<script src = "<?= base_url('public/js/add.js') ?>"></script>
+<script src="<?= base_url('public/js/add.js') ?>?v=<?= filemtime(FCPATH . 'public/js/add.js') ?>"></script>

@@ -591,6 +591,18 @@
 }
 /* End */
 
+body.admin-ui-shell .employees-timetable-page #scheduleTableContainer td.managed-leave {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  min-width: 96px;
+  line-height: 1.65;
+  padding: 10px 8px !important;
+  color: #245332 !important;
+  background: #e5f4df !important;
+  font-weight: 600;
+  cursor: pointer !important;
+}
+
 /* Add New Feature */
 @media (max-width: 768px) {
   body.admin-ui-shell .employees-timetable-page {

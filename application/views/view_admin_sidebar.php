@@ -71,7 +71,7 @@ $can_stocktaking = $CI->get_permission_enabled('stocktaking.view');
   });
 </script>
          <!-- HTML -->
-  <nav>
+  <nav class="admin-topbar">
     <div class="profile">
       <div class="top_profile">
         <img src="https://myduties.net/storage/users/avatars/6442ccd236b7a.jpg" />
@@ -196,10 +196,16 @@ $can_stocktaking = $CI->get_permission_enabled('stocktaking.view');
         <li class="sidebar-list-item <?php if($segment_2 == 'employees_timetable') {echo 'active';} ?>">
           <a href="<?php echo base_url().MOD_VALUE.'admin/employees_timetable'; ?>">
             <i class="bi bi-calendar-week"></i>
-            <span>جداول الموظفين</span>
+             <span>جداول الموظفين</span>
+          </a>
+         </li>
+        <li class="sidebar-list-item <?php if($segment_2 == 'employees_leaves') {echo 'active';} ?>">
+          <a href="<?php echo base_url().MOD_VALUE.'admin/employees_leaves'; ?>">
+            <i class="bi bi-calendar2-check"></i>
+            <span>الإجازات</span>
           </a>
         </li>
-        <?php endif; ?>
+         <?php endif; ?>
         <?php if ($can_admins) : ?>
         <li class="sidebar-list-item <?php if($segment_2 == 'admins') {echo 'active';} ?>">
           <a href="<?php echo base_url().MOD_VALUE.'admin/admins'; ?>">

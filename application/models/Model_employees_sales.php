@@ -15,15 +15,26 @@ class Model_employees_sales extends CI_Model {
     }
 
     public function insert_upload_record($filepath, $filename, $individualsDate, $businessDate) {
-        # كل رفعة الآن لها مسار فريد دائمًا (انظر handle_employees_sales_upload)، لذا التطابق على
-        # filepath لن يتحقق أبدًا عمليًا؛ المطابقة الصحيحة لتحديث سجل موجود لنفس الفترة هي زوج
-        # التاريخين معًا، وإلا يُنشأ سجلان بنفس التاريخ ويصبح اختيارهما لاحقًا غير محدد
-        $query = $this->db->get_where($this->table, array('individuals_date' => $individualsDate, 'business_date' => $businessDate));
-        if ($query->num_rows() > 0) {
-            $this->db->update($this->table, array('filepath' => $filepath, 'filename' => $filename), array('individuals_date' => $individualsDate, 'business_date' => $businessDate));
-        } else {
-            $this->db->insert($this->table, array('filepath' => $filepath, 'filename' => $filename, 'individuals_date' => $individualsDate, 'business_date' => $businessDate,));
+        // Append each upload so id always reflects upload order, even for identical dates.
+        return $this->db->insert($this->table, array('filepath' => $filepath, 'filename' => $filename, 'individuals_date' => $individualsDate, 'business_date' => $businessDate));
+    }
+
+    public function get_latest_upload_for_month($month) {
+        if (!is_string($month) || !preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/D', $month)) {
+            return null;
         }
+        $start = $month . '-01';
+        $end = date('Y-m-d', strtotime($start . ' +1 month'));
+        return $this->db->where('individuals_date >=', $start)
+            ->where('individuals_date <', $end)
+            ->order_by('id', 'DESC')->limit(1)->get($this->table)->row();
+    }
+
+    public function get_available_months() {
+        return $this->db->select("DATE_FORMAT(individuals_date, '%Y-%m') AS sales_month", false)
+            ->where('individuals_date >=', '1000-01-01')
+            ->group_by('sales_month')->order_by('sales_month', 'DESC')
+            ->get($this->table)->result();
     }
 
     public function get_upload_record_by_filepath($filepath) {
