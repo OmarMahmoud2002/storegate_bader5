@@ -82,7 +82,48 @@ final class DeploymentSchema
         $this->statements[] = "ALTER TABLE `$table` ADD COLUMN `$column` $definition";
         return true;
     }
-    public function sql(string $sql): void { $this->statements[] = $sql; }
+    public function sql(string $sql): void {
+        deploymentValidateSchemaSql($sql);
+        $this->statements[] = $sql;
+    }
+}
+
+function deploymentValidateSchemaSql(string $sql): void
+{
+    $identifier = '`?[A-Za-z0-9_]+`?';
+    $allowed = '/^\s*(CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+' . $identifier . '\s*\(|ALTER\s+TABLE\s+' . $identifier . '\s+ADD\s+(COLUMN\s+' . $identifier . '\s+|UNIQUE\s+KEY\s+' . $identifier . '\s*\())/i';
+    if (!preg_match($allowed, $sql) || preg_match('/;|--|\/\*|\b(INSERT|UPDATE|DELETE|REPLACE|TRUNCATE|DROP|RENAME|MODIFY|CHANGE|SELECT)\b/i', $sql)) {
+        throw new RuntimeException('Deployment permits additive schema changes only; data-changing SQL is blocked.');
+    }
+}
+
+function deploymentFingerprint(PDO $pdo, ?array $reference = null): array
+{
+    $tables = $reference === null
+        ? $pdo->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME")->fetchAll(PDO::FETCH_COLUMN)
+        : array_keys($reference);
+    $result = [];
+    foreach ($tables as $table) {
+        $quotedTable = '`' . str_replace('`', '``', $table) . '`';
+        if ($reference === null) {
+            $columns = array_column($pdo->query("SHOW COLUMNS FROM $quotedTable")->fetchAll(), 'Field');
+        } else {
+            $columns = $reference[$table]['columns'];
+        }
+        $quotedColumns = array_map(static fn($name) => '`' . str_replace('`', '``', $name) . '`', $columns);
+        $rows = [];
+        $query = $pdo->query('SELECT ' . implode(',', $quotedColumns) . " FROM $quotedTable");
+        while ($row = $query->fetch(PDO::FETCH_NUM)) {
+            $hash = hash_init('sha256');
+            foreach ($row as $value) { hash_update($hash, $value === null ? 'N;' : 'S' . strlen((string) $value) . ':' . $value . ';'); }
+            $rows[] = hash_final($hash);
+        }
+        sort($rows, SORT_STRING);
+        $hash = hash_init('sha256');
+        foreach ($rows as $rowHash) { hash_update($hash, $rowHash); }
+        $result[$table] = ['columns' => $columns, 'rows' => count($rows), 'sha256' => hash_final($hash)];
+    }
+    return $result;
 }
 
 function deploymentMigrate(PDO $pdo, string $directory, bool $preview): void
@@ -93,12 +134,12 @@ function deploymentMigrate(PDO $pdo, string $directory, bool $preview): void
         if (!$preview) {
             $locked = (int) $pdo->query("SELECT GET_LOCK(CONCAT(DATABASE(), ':storegate-deploy'), 0)")->fetchColumn() === 1;
             if (!$locked) { throw new RuntimeException('Another database migration is running.'); }
-            $pdo->exec('CREATE TABLE IF NOT EXISTS `_storegate_deploy_migrations` (version VARCHAR(190) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB');
+            $pdo->exec('CREATE TABLE IF NOT EXISTS `_storegate_schema_migrations` (version VARCHAR(190) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB');
         }
         $schema = new DeploymentSchema($pdo);
         $applied = [];
-        if ($schema->tableExists('_storegate_deploy_migrations')) {
-            foreach ($pdo->query('SELECT version, checksum FROM `_storegate_deploy_migrations`') as $row) { $applied[$row['version']] = $row['checksum']; }
+        if ($schema->tableExists('_storegate_schema_migrations')) {
+            foreach ($pdo->query('SELECT version, checksum FROM `_storegate_schema_migrations`') as $row) { $applied[$row['version']] = $row['checksum']; }
         }
         $files = glob(rtrim($directory, '/\\') . '/[0-9]*.php');
         sort($files, SORT_STRING);
@@ -119,11 +160,12 @@ function deploymentMigrate(PDO $pdo, string $directory, bool $preview): void
             if (!is_callable($migration)) { throw new RuntimeException("Invalid migration: $version"); }
             $schema = new DeploymentSchema($pdo);
             $migration($schema);
+            foreach ($schema->statements as $sql) { deploymentValidateSchemaSql($sql); }
             echo ($preview ? 'Pending: ' : 'Applying: ') . $version . ' (' . count($schema->statements) . " statements)\n";
             if ($preview) { foreach ($schema->statements as $sql) { echo $sql . ";\n"; } continue; }
             // MySQL DDL auto-commits. Each migration must be safe to retry after failure.
             foreach ($schema->statements as $sql) { $pdo->exec($sql); }
-            $query = $pdo->prepare('INSERT INTO `_storegate_deploy_migrations` (version, checksum, applied_at) VALUES (?, ?, ?)');
+            $query = $pdo->prepare('INSERT INTO `_storegate_schema_migrations` (version, checksum, applied_at) VALUES (?, ?, ?)');
             $query->execute([$version, $checksum, gmdate('Y-m-d H:i:s')]);
         }
         echo $preview ? "Database preview only; no writes.\n" : "Database migrations complete.\n";

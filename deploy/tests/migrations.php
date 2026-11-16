@@ -25,20 +25,33 @@ try {
                ('', 'BAR1', 'P1', 'منتج عربي', 'SAGENT_STK', 'no', 3, '2026-01-02'),
                ('SERIAL2', '', 'P2', 'Other stock', 'OTHER', 'yes', 1, '2026-01-03')");
     $db->exec("INSERT INTO tbl_operations VALUES (1, 'SSERIAL1')");
-    $directory = dirname(__DIR__) . '/migrations';
+    $directory = dirname(__DIR__) . '/schema_migrations';
+    $originalData = deploymentFingerprint($db);
     $plan = quietMigration($db, $directory, true);
     check(str_contains($plan, 'Pending:'), 'Plan did not list pending migrations.');
     check((int) $db->query('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()')->fetchColumn() === 4, 'Plan wrote to the database.');
     quietMigration($db, $directory);
-    check((int) $db->query('SELECT COUNT(*) FROM _storegate_deploy_migrations')->fetchColumn() === 2, 'Migration ledger incomplete.');
-    check((int) $db->query("SELECT quantity FROM tbl_product_quantity_updates WHERE item_code = 'P1'")->fetchColumn() === 4, 'Quantity baseline differs from the application.');
-    check($db->query('SELECT item_description FROM tbl_operations WHERE id = 1')->fetchColumn() === 'منتج عربي', 'Operation metadata backfill failed.');
+    check((int) $db->query('SELECT COUNT(*) FROM _storegate_schema_migrations')->fetchColumn() === 2, 'Migration ledger incomplete.');
+    check((int) $db->query("SELECT COUNT(*) FROM tbl_product_quantity_updates")->fetchColumn() === 0, 'Quantity table was seeded during deployment.');
+    check(deploymentFingerprint($db, $originalData) === $originalData, 'Existing application data was changed.');
+    $db->exec("UPDATE current_store_items SET item_description = 'Unexpected change' WHERE id = 1");
+    check(deploymentFingerprint($db, $originalData) !== $originalData, 'Fingerprint missed a changed value with the same row count.');
+    $db->exec("UPDATE current_store_items SET item_description = 'منتج عربي' WHERE id = 1");
+    check(deploymentFingerprint($db, $originalData) === $originalData, 'Fingerprint did not recognize restored values.');
+    foreach (['DELETE FROM current_store_items', 'UPDATE tbl_operations SET serial = 1',
+              'TRUNCATE TABLE tbl_operations', 'DROP TABLE tbl_operations',
+              'CREATE TABLE IF NOT EXISTS bad AS SELECT * FROM current_store_items',
+              'ALTER TABLE tbl_operations ADD COLUMN bad INT; DELETE FROM current_store_items'] as $unsafeSql) {
+        $blocked = false;
+        try { deploymentValidateSchemaSql($unsafeSql); } catch (RuntimeException $error) { $blocked = true; }
+        check($blocked, 'Data-changing or destructive SQL was accepted.');
+    }
     check((int) $db->query('SELECT COUNT(*) FROM current_store_items')->fetchColumn() === 3, 'Stock rows changed.');
     $movementCount = (int) $db->query('SELECT COUNT(*) FROM tbl_product_stock_movements')->fetchColumn();
     check(str_contains(quietMigration($db, $directory), 'Already applied:'), 'Second run did not skip applied migrations.');
     check((int) $db->query('SELECT COUNT(*) FROM tbl_product_stock_movements')->fetchColumn() === $movementCount, 'Repeated run duplicated movements.');
     // Existing partial schema is completed without replacing previously saved data.
-    $db->exec('DELETE FROM _storegate_deploy_migrations');
+    $db->exec('DELETE FROM _storegate_schema_migrations');
     $db->exec("INSERT INTO tbl_serial_notes (serial_number, normalized_serial, note, created_at) VALUES ('SERIAL1', 'ERIAL1', 'Keep this note', NOW())");
     quietMigration($db, $directory);
     check((int) $db->query('SELECT COUNT(*) FROM tbl_product_stock_movements')->fetchColumn() === $movementCount, 'Retry duplicated movements.');
@@ -52,15 +65,15 @@ try {
     check($rejected, 'Changed applied migration was accepted.');
     copy($directory . '/001_inventory_and_metadata.php', $first);
     $failed = $temp . '/003_failure_recovery.php';
-    file_put_contents($failed, '<?php return static function (DeploymentSchema $s): void { $s->create("test_retry", "id INT PRIMARY KEY"); $s->sql("INVALID SQL"); };');
+    file_put_contents($failed, '<?php return static function (DeploymentSchema $s): void { $s->create("test_retry", "id INT PRIMARY KEY"); $s->create("test_invalid_type", "id NOT_A_REAL_TYPE"); };');
     $failedAsExpected = false;
     try { quietMigration($db, $temp); } catch (PDOException $error) { $failedAsExpected = true; }
     check($failedAsExpected, 'Expected failure was ignored.');
-    check((int) $db->query('SELECT COUNT(*) FROM _storegate_deploy_migrations')->fetchColumn() === 2, 'Failed migration marked complete.');
-    file_put_contents($failed, '<?php return static function (DeploymentSchema $s): void { $s->create("test_retry", "id INT PRIMARY KEY"); $s->sql("INSERT INTO test_retry VALUES (1) ON DUPLICATE KEY UPDATE id = VALUES(id)"); };');
+    check((int) $db->query('SELECT COUNT(*) FROM _storegate_schema_migrations')->fetchColumn() === 2, 'Failed migration marked complete.');
+    file_put_contents($failed, '<?php return static function (DeploymentSchema $s): void { $s->create("test_retry", "id INT PRIMARY KEY"); $s->create("test_invalid_type", "id INT PRIMARY KEY"); };');
     quietMigration($db, $temp);
-    check((int) $db->query('SELECT COUNT(*) FROM test_retry')->fetchColumn() === 1, 'Recovery after partial DDL failed.');
-    echo "PASS: read-only plan, schema creation, Arabic backfill, quantity baseline, repeat/retry, checksums and failure recovery.\n";
+    check((int) $db->query('SELECT COUNT(*) FROM test_retry')->fetchColumn() === 0, 'Recovery after partial DDL failed.');
+    echo "PASS: read-only plan, additive schema, unchanged application data, repeat/retry, checksums and failure recovery.\n";
 } finally {
     $admin->exec("DROP DATABASE IF EXISTS `$database`");
     if (is_dir($temp)) { foreach (glob($temp . '/*.php') as $file) { unlink($file); } rmdir($temp); }
