@@ -74,6 +74,7 @@ function render_serial_notes(container, notes) {
   safeNotes.forEach(function (note) {
     const item = document.createElement('div');
     item.className = 'serial-note-item';
+    item.dataset.noteId = String(note.id);
 
     const text = document.createElement('p');
     text.textContent = note.note || '';
@@ -92,8 +93,100 @@ function render_serial_notes(container, notes) {
     date.appendChild(document.createTextNode(note.created_at || ''));
     meta.appendChild(date);
 
+    if (window.canDeleteSerialNote) {
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'serial-note-delete-button';
+      deleteButton.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i> حذف الملاحظة';
+      deleteButton.addEventListener('click', function () {
+        delete_serial_note(note, deleteButton);
+      });
+      meta.appendChild(deleteButton);
+    }
+
     item.appendChild(meta);
     container.appendChild(item);
+  });
+}
+
+function confirm_serial_note_deletion(note) {
+  const modal = document.getElementById('deleteSerialNoteModal');
+  if (!modal || !modal.classList.contains('hide')) return Promise.resolve(false);
+  const previousFocus = document.activeElement;
+  const cancel = document.getElementById('cancelDeleteSerialNote');
+  const confirm = document.getElementById('confirmDeleteSerialNote');
+  document.getElementById('deleteSerialNotePreview').textContent = note.note || '';
+  modal.classList.remove('hide');
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  cancel.focus();
+
+  return new Promise(function (resolve) {
+    function finish(confirmed) {
+      modal.classList.add('hide');
+      document.body.style.overflow = previousOverflow;
+      modal.removeEventListener('click', onClick);
+      document.removeEventListener('keydown', onKey, true);
+      if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+      resolve(confirmed);
+    }
+    function onClick(event) {
+      if (event.target === modal || event.target.closest('[data-delete-note-cancel]')) finish(false);
+      else if (event.target.closest('#confirmDeleteSerialNote')) finish(true);
+    }
+    function onKey(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        finish(false);
+      } else if (event.key === 'Tab') {
+        const controls = Array.from(modal.querySelectorAll('button'));
+        const index = controls.indexOf(document.activeElement);
+        event.preventDefault();
+        controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length].focus();
+      }
+    }
+    modal.addEventListener('click', onClick);
+    document.addEventListener('keydown', onKey, true);
+  });
+}
+
+async function delete_serial_note(note, button) {
+  if (!await confirm_serial_note_deletion(note)) return;
+  button.disabled = true;
+  button.textContent = 'جارٍ الحذف...';
+
+  $.ajax({
+    url: productsBaseUrl + 'delete_serial_note',
+    method: 'POST',
+    data: { id: note.id },
+    dataType: 'json'
+  }).done(function (data) {
+    if (data.status !== 'ok') {
+      window.alert(data.description || 'تعذر حذف الملاحظة');
+      return;
+    }
+    document.querySelectorAll('.serial-note-item').forEach(function (item) {
+      if (item.dataset.noteId === String(note.id)) item.remove();
+    });
+    if (Array.isArray(product_data.notes)) {
+      product_data.notes = product_data.notes.filter(function (entry) {
+        return String(entry.id) !== String(note.id);
+      });
+    }
+    if (serialNotesDetailsList && !serialNotesDetailsList.children.length && serialNotesRow) {
+      serialNotesRow.classList.add('hide');
+    }
+    if (serialNotesSearchList && !serialNotesSearchList.children.length &&
+        serialNotesSearchResult && !serialNotesSearchResult.classList.contains('hide')) {
+      hide_noted_serial_result();
+      show_search_error('هذا السيريال غير موجود في المخزون');
+    }
+  }).fail(function () {
+    window.alert('تعذر الاتصال بالخادم، يرجى المحاولة مرة أخرى');
+  }).always(function () {
+    button.disabled = false;
+    button.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i> حذف الملاحظة';
   });
 }
 

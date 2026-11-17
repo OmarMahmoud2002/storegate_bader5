@@ -1,5 +1,6 @@
 <?php
 $CI =& get_instance();
+$CI->Permissions->ensure_employee_leave_permissions();
 $segment_2 = 0;
 $segment_2 = $CI->uri->segment('2');
 $segment_3 = 0;
@@ -15,6 +16,7 @@ $can_shelves = $CI->get_permission_enabled('shelves.view');
 $can_employees = $CI->get_permission_enabled('employees.view');
 $can_employees_sales = $CI->get_permission_enabled('employees_sales.view');
 $can_employees_timetable = $CI->get_permission_enabled('employees_timetable.view');
+$can_employees_leaves = $CI->get_permission_enabled('employees_leaves.view');
 $can_admins = $CI->get_permission_enabled('admins.view');
 $can_requests = $CI->get_permission_enabled('requests.view');
 $can_sales = $CI->get_permission_enabled('sales.view');
@@ -199,6 +201,8 @@ $can_stocktaking = $CI->get_permission_enabled('stocktaking.view');
              <span>جداول الموظفين</span>
           </a>
          </li>
+        <?php endif; ?>
+        <?php if ($can_employees_leaves) : ?>
         <li class="sidebar-list-item <?php if($segment_2 == 'employees_leaves') {echo 'active';} ?>">
           <a href="<?php echo base_url().MOD_VALUE.'admin/employees_leaves'; ?>">
             <i class="bi bi-calendar2-check"></i>

@@ -3,6 +3,9 @@
 .leaves-heading-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
 .leaves-heading-actions .leaves-add-button{width:auto;margin:0}
 .leaves-page.leaves-modal{padding:0!important;min-height:0;height:100%!important;background:transparent;overflow-x:hidden!important;overflow-y:auto!important}
+/* The admin header is at 110000; keep leave dialogs and their backdrop above it. */
+body .modal.leaves-modal{z-index:110020}
+body.modal-open:has(> .leaves-modal.show) > .modal-backdrop{z-index:110010}
 .leaves-modal .modal-dialog{max-width:640px;margin:24px auto;min-height:calc(100% - 48px)}
 .leaves-modal .modal-content{max-height:calc(100dvh - 48px);box-shadow:0 24px 80px #26324b26}
 .leaves-modal .modal-body{padding:0 4px;overscroll-behavior:contain}
@@ -27,3 +30,36 @@
 .leaves-confirm-modal .leaves-modal-actions>button{flex:1}
 .leaves-danger{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:46px;border-radius:12px;padding:10px 18px;font:inherit;font-weight:700;cursor:pointer;border:0;background:#c0313f;color:#fff;transition:background .2s}
 .leaves-danger:hover{background:#a32939}.leaves-danger:disabled{opacity:.65;cursor:wait}
+
+/* Override the shared admin table rules: calendar columns have different widths. */
+.leaves-page table.leaves-calendar {
+  table-layout: fixed;
+  width: 100%;
+  min-width: var(--leave-calendar-width);
+}
+.leaves-calendar .leave-name-column { width: 150px; }
+.leaves-calendar .leave-number-column { width: 100px; }
+.leaves-calendar .leave-day-column { width: 32px; }
+.leaves-calendar .leave-total-column { width: 90px; }
+.leaves-page table.leaves-calendar th,
+.leaves-page table.leaves-calendar td {
+  height: 36px;
+  padding: 5px 4px;
+  line-height: 1.4;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.leaves-page table.leaves-calendar .employee-name {
+  min-width: 150px;
+  padding: 5px 12px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leaves-page table.leaves-calendar thead th.is-weekend {
+  background: #c4e8cb !important;
+  color: #195d30 !important;
+}
+.leaves-month-toolbar{display:flex;align-items:start;flex-wrap:wrap;gap:24px;margin-bottom:24px}.leaves-month-filter{display:flex;align-items:end;flex-wrap:wrap;gap:10px}.leaves-month-filter label{width:100%}.leaves-month-filter input[type=month]{width:auto;margin:0;direction:ltr}.leaves-limit-form{flex:1;min-width:260px}.leaves-limit-controls{display:flex;gap:10px;align-items:start}.leaves-limit-controls input[type=number]{max-width:140px;margin:0}.leaves-limit-form .leaves-hint{margin:8px 0 0}.leaves-calendar-scroll{width:100%;overflow:auto;border:1px solid var(--leave-border);border-radius:12px;max-height:65vh}.leaves-calendar{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;text-align:center;white-space:nowrap}.leaves-calendar caption{caption-side:top;text-align:right;padding:12px;color:var(--leave-muted)}.leaves-calendar th,.leaves-calendar td{border-inline-end:1px solid #d7dce5;border-bottom:1px solid #d7dce5;height:38px;min-width:32px;padding:5px}.leaves-calendar thead th{background:#eef0f6;font-weight:700}.leaves-calendar .employee-name{position:sticky;right:0;min-width:160px;max-width:230px;white-space:normal;background:#fff;z-index:1;text-align:right;padding:10px 12px;box-shadow:-2px 0 4px #26324b0a}.leaves-calendar thead .employee-name{background:#eef0f6;z-index:2}.leaves-calendar .is-weekend{background:#c4e8cb;color:#195d30}.leaves-calendar .is-leave{background:#151515;color:#fff;cursor:help}.leaves-calendar .is-leave:focus-visible{outline:3px solid #a78bfa;outline-offset:-3px}.leaves-calendar .leave-total{background:#fff2c2;min-width:85px;font-weight:800}.leaves-calendar-legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px;color:var(--leave-muted);font-size:13px}.leaves-calendar-legend span{display:inline-flex;gap:6px;align-items:center}.leaves-calendar-legend i{display:inline-block;width:14px;height:14px;border-radius:3px}.legend-weekend{background:#c4e8cb}.legend-leave{background:#151515}.leaves-calendar-legend small{flex-basis:100%;line-height:1.8}.leaves-capacity-warning{background:#fff5d9;border:1px solid #e7bf58;color:#775211;padding:16px;border-radius:12px;margin-bottom:18px;line-height:1.8}.leaves-capacity-warning p{margin:6px 0 0}.leaves-manage-records{margin-top:20px}.leaves-manage-records summary{cursor:pointer;font-weight:700;padding:12px 0;color:var(--leave-primary)}.leaves-management-table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}.leaves-management-table th,.leaves-management-table td{padding:10px;text-align:right;border-bottom:1px solid var(--leave-border)}.leaves-management-table th{background:#f4f5fa}.leaves-management-table form{margin:0}

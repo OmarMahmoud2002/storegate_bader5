@@ -6,6 +6,7 @@ class Model_permissions extends CI_Model {
     protected $permissions_table;
     protected $roles_permissions_table;
     protected $roles_table;
+    private $leave_permissions_ready = false;
 
     function __construct() {
         parent::__construct();
@@ -125,6 +126,29 @@ class Model_permissions extends CI_Model {
             }
             $this->db->insert_batch($this->roles_permissions_table, $role_permissions);
         }
+    }
+
+    public function get_employee_leave_permissions() {
+        $permissions = array(
+            array('key' => 'employees_leaves.view', 'label' => 'عرض الإجازات', 'type' => 'view'),
+            array('key' => 'employees_leaves.create', 'label' => 'إضافة إجازة', 'type' => 'create'),
+            array('key' => 'employees_leaves.delete', 'label' => 'حذف إجازة', 'type' => 'delete'),
+            array('key' => 'employees_leaves.limit.update', 'label' => 'تعديل العدد المسموح شهريًا', 'type' => 'update'),
+        );
+        foreach ($permissions as &$permission) {
+            $permission += array('page_label' => 'الإجازات', 'route' => 'admin/employees_leaves',
+                'section_name' => 'الرفوف والموظفين', 'section_icon' => 'bi-people');
+        }
+        unset($permission);
+        return $permissions;
+    }
+
+    public function ensure_employee_leave_permissions() {
+        if ($this->leave_permissions_ready) return;
+        $permissions = $this->get_employee_leave_permissions();
+        $this->ensure_permissions(array($permissions[0]), 'employees_timetable.view');
+        $this->ensure_permissions(array_slice($permissions, 1), 'employees_timetable.save');
+        $this->leave_permissions_ready = true;
     }
 
     function update_role($role_id, $role_name, $role_description) {

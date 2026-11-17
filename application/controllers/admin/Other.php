@@ -282,6 +282,7 @@ class Other extends MY_Controller {
 		$this->check_permission('roles.view');
 		$this->ensure_home_tab_permissions();
 		$this->ensure_product_search_note_permission();
+		$this->Permissions->ensure_employee_leave_permissions();
 
 		$this->data['permission_groups'] = $this->get_admin_permissions_catalog();
 		
@@ -488,6 +489,11 @@ class Other extends MY_Controller {
 							['key' => 'employees_timetable.save', 'label' => 'حفظ جدول موظف', 'type' => 'update'],
 							['key' => 'employees_timetable.supervisors.view', 'label' => 'عرض جداول المشرفين', 'type' => 'special'],
 						],
+					],
+					[
+						'label' => 'الإجازات',
+						'route' => 'admin/employees_leaves',
+						'permissions' => $this->Permissions->get_employee_leave_permissions(),
 					],
 				],
 			],

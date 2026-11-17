@@ -264,8 +264,8 @@ if ($stock_upload_time !== false) {
   <div class="prod_form">
     <form class='formTag product-search-card'>
       <?php if ($can_upload_products): ?>
-        <a href="<?= base_url('admin/products/add') ?>" class="product-upload-shortcut"
-          title="الانتقال إلى صفحة رفع ملف إكسيل المنتجات">
+        <a href="<?= base_url('admin/products/add') ?>" id="openProductUploadModal" class="product-upload-shortcut"
+          title="رفع ملف إكسيل المنتجات" aria-haspopup="dialog" aria-controls="productUploadModal">
           <i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
           <span>إضافة منتجات</span>
         </a>
@@ -678,6 +678,30 @@ if ($stock_upload_time !== false) {
 </div>
 </div>
 
+
+
+<div id="deleteSerialNoteModal" class="serial-note-modal serial-note-delete-modal hide" role="alertdialog" aria-modal="true" aria-labelledby="deleteSerialNoteTitle" aria-describedby="deleteSerialNoteDescription" dir="rtl">
+  <div class="serial-note-modal-card">
+    <div class="serial-note-modal-head">
+      <div class="serial-note-modal-title">
+        <span><i class="bi bi-trash" aria-hidden="true"></i></span>
+        <div>
+          <h2 id="deleteSerialNoteTitle">تأكيد حذف الملاحظة</h2>
+          <p id="deleteSerialNoteDescription">هل تريد حذف هذه الملاحظة؟ لا يمكن التراجع عن الحذف.</p>
+        </div>
+      </div>
+      <button type="button" class="serial-note-modal-close" data-delete-note-cancel aria-label="إغلاق"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+    <div class="serial-note-form">
+      <p id="deleteSerialNotePreview" class="serial-note-delete-preview"></p>
+      <div class="serial-note-modal-actions">
+        <button type="button" id="cancelDeleteSerialNote" class="serial-note-cancel-button" data-delete-note-cancel>إلغاء</button>
+        <button type="button" id="confirmDeleteSerialNote" class="serial-note-save-button"><i class="bi bi-trash" aria-hidden="true"></i><span>حذف الملاحظة</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@6.1/dist/fancybox/fancybox.umd.js"></script>
 
 <script
@@ -685,8 +709,12 @@ if ($stock_upload_time !== false) {
      echo date_timestamp_get($date); ?>"></script>
 <script>
   window.appBaseUrl = "<?php echo base_url() . MOD_VALUE; ?>";
+  window.canDeleteSerialNote = <?= json_encode((bool) $CI->get_permission_enabled('product_search.notes.delete')) ?>;
 </script>
 <script
   src="<?php echo base_url(); ?>public/js/search_product.js?a=<?php $date = date_create();
      echo date_timestamp_get($date); ?>"></script>
+<?php if ($can_upload_products): ?>
+<?php $this->load->view('products/upload_modal', array('can_upload_products' => $can_upload_products)); ?>
+<?php endif; ?>
 <?php $this->load->view('view_footer') ?>

@@ -10,24 +10,48 @@ class Employees_leaves extends MY_Controller
             redirect(base_url());
             exit;
         }
-        $this->check_permission('employees_timetable.view');
+        $this->Permissions->ensure_employee_leave_permissions();
         $this->load->model('Model_employee_leaves', 'Leaves');
         date_default_timezone_set('Asia/Riyadh');
     }
 
     public function index()
     {
+        $this->check_permission('employees_leaves.view');
         $data = array('employees' => $this->Model_admin->getemployees(), 'leaves' => $this->Leaves->get_all());
         $this->load->model('Model_notifications', 'Notifications');
         $notification_filter = array('user_id' => $this->session->userdata('user_id'));
         $data['notifications'] = array_reverse($this->Notifications->get_notifications($notification_filter));
         $data['notifications_count'] = $this->Notifications->get_notifications_length(array_merge($notification_filter, array('status' => 'unread')));
         $data['page_title'] = 'إجازات الموظفين';
-        $data['can_manage'] = $this->get_permission_enabled('employees_timetable.save');
+        $data['can_create'] = $this->get_permission_enabled('employees_leaves.create');
+        $data['can_delete'] = $this->get_permission_enabled('employees_leaves.delete');
+        $data['can_set_limit'] = $this->get_permission_enabled('employees_leaves.limit.update');
+        $data['can_view_timetable'] = $this->get_permission_enabled('employees_timetable.view');
         $data['values'] = array('name' => '', 'start_date' => '', 'end_date' => '', 'all_employees' => 1, 'employee_ids' => array());
+        $month = (string) $this->input->get('month');
+        if (!preg_match('/^[1-9][0-9]{3}-(0[1-9]|1[0-2])$/D', $month)) $month = date('Y-m');
+        $data['month'] = $month;
+        $data['capacity_warnings'] = array();
+        $data['confirmation_token'] = '';
         $data['error'] = '';
-        if ($this->input->method() === 'post') {
-            $this->check_permission('employees_timetable.save');
+        $data['limit_error'] = '';
+        if ($this->input->method() === 'post' && $this->input->post('action') === 'save_limit') {
+            $this->check_permission('employees_leaves.limit.update');
+            $limit = filter_var($this->input->post('employee_limit'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 0, 'max_range' => 2147483647)));
+            if ($limit === false || $limit === null) {
+                $data['limit_error'] = 'اكتب عددًا صحيحًا يساوي صفرًا أو أكثر.';
+            } elseif ($this->Leaves->save_month_limit($month, $limit, (int) $this->session->userdata('user_id'))) {
+                $this->session->set_flashdata('leave_success', 'تم حفظ العدد المسموح لهذا الشهر.');
+                redirect(base_url() . MOD_VALUE . 'admin/employees_leaves?month=' . $month);
+                return;
+            } else {
+                $data['limit_error'] = 'تعذر حفظ العدد المسموح.';
+            }
+        }
+        $data['employee_limit'] = $this->Leaves->get_month_limit($month, count($data['employees']));
+        if ($this->input->method() === 'post' && $this->input->post('action') !== 'save_limit') {
+            $this->check_permission('employees_leaves.create');
             $values = array(
                 'name' => trim((string) $this->input->post('name')),
                 'start_date' => (string) $this->input->post('start_date'),
@@ -50,11 +74,28 @@ class Employees_leaves extends MY_Controller
             } elseif (!$values['all_employees'] && (empty($values['employee_ids']) || array_diff($values['employee_ids'], $valid_ids))) {
                 $data['error'] = 'اختر موظفًا واحدًا على الأقل من قائمة الموظفين.';
             } else {
+                $warnings = $this->Leaves->capacity_warnings($values, $data['employees'], $data['leaves']);
+                $fingerprint = hash('sha256', serialize(array($values, $warnings)));
+                $pending = $this->session->userdata('leave_capacity_confirmation');
+                $token = (string) $this->input->post('confirmation_token');
+                $confirmed = is_array($pending) && isset($pending['token'], $pending['fingerprint']) &&
+                    hash_equals($pending['token'], $token) && hash_equals($pending['fingerprint'], $fingerprint);
+                if ($warnings && !$confirmed) {
+                    $data['capacity_warnings'] = $warnings;
+                    $data['confirmation_token'] = bin2hex(random_bytes(24));
+                    $this->session->set_userdata('leave_capacity_confirmation', array(
+                        'token' => $data['confirmation_token'], 'fingerprint' => $fingerprint,
+                    ));
+                    $data['employee_limit'] = $this->Leaves->get_month_limit($month, count($data['employees']));
+                    $this->load->view('view_admin_employees_leaves', $data);
+                    return;
+                }
+                $this->session->unset_userdata('leave_capacity_confirmation');
                 if ($values['all_employees']) $values['employee_ids'] = array();
                 $values['created_by'] = (int) $this->session->userdata('user_id');
                 if ($this->Leaves->create($values)) {
                     $this->session->set_flashdata('leave_success', 'تم حفظ الإجازة وإضافتها إلى جداول الموظفين.');
-                    redirect(base_url() . MOD_VALUE . 'admin/employees_leaves');
+                    redirect(base_url() . MOD_VALUE . 'admin/employees_leaves?month=' . substr($values['start_date'], 0, 7));
                     return;
                 }
                 $data['error'] = 'تعذر حفظ الإجازة، حاول مرة أخرى.';
@@ -65,16 +106,23 @@ class Employees_leaves extends MY_Controller
 
     public function data()
     {
+        // Timetable viewers still need the leave overlay without access to leave management.
+        if (!$this->get_permission_enabled('employees_timetable.view')) {
+            $this->check_permission('employees_leaves.view');
+        }
         $data = array('leaves' => $this->Leaves->get_all(), 'overrides' => (object) $this->Leaves->get_overrides());
         $this->output->set_content_type('application/json')->set_output(json_encode($data, JSON_UNESCAPED_UNICODE));
     }
 
     public function delete()
     {
-        $this->check_permission('employees_timetable.save');
+        $this->check_permission('employees_leaves.view');
+        $this->check_permission('employees_leaves.delete');
         if ($this->input->method() !== 'post') show_404();
         $success = $this->Leaves->delete((int) $this->input->post('leave_id'));
         $this->session->set_flashdata('leave_success', $success ? 'تم حذف الإجازة واستعادة عرض الدوام الأصلي.' : 'تعذر حذف الإجازة.');
-        redirect(base_url() . MOD_VALUE . 'admin/employees_leaves');
+        $month = (string) $this->input->post('month');
+        if (!preg_match('/^[1-9][0-9]{3}-(0[1-9]|1[0-2])$/D', $month)) $month = date('Y-m');
+        redirect(base_url() . MOD_VALUE . 'admin/employees_leaves?month=' . $month);
     }
 }

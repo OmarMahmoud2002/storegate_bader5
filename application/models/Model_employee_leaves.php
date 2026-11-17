@@ -21,6 +21,14 @@ class Model_employee_leaves extends CI_Model
                 KEY leave_dates (start_date, end_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         }
+        if (!$this->db->table_exists('employee_leave_month_limits')) {
+            $this->db->query("CREATE TABLE IF NOT EXISTS employee_leave_month_limits (
+                month DATE NOT NULL PRIMARY KEY,
+                employee_limit INT UNSIGNED NOT NULL,
+                updated_by INT NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
         if (!$this->db->table_exists('employee_leave_overrides')) {
             $this->db->query("CREATE TABLE IF NOT EXISTS employee_leave_overrides (
                 user_id INT NOT NULL,
@@ -41,6 +49,49 @@ class Model_employee_leaves extends CI_Model
         }
         unset($row);
         return $rows;
+    }
+
+    public function get_month_limit($month, $default)
+    {
+        $row = $this->db->where('month <=', $month . '-01')->order_by('month', 'DESC')
+            ->limit(1)->get('employee_leave_month_limits')->row_array();
+        return $row ? (int) $row['employee_limit'] : (int) $default;
+    }
+
+    public function save_month_limit($month, $limit, $user_id)
+    {
+        return $this->db->replace('employee_leave_month_limits', array(
+            'month' => $month . '-01', 'employee_limit' => $limit, 'updated_by' => $user_id,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ));
+    }
+
+    // Count distinct employees per month, including the proposed leave, never leave records.
+    public function capacity_warnings($values, $employees, $leaves)
+    {
+        $warnings = array();
+        $first = new DateTime(substr($values['start_date'], 0, 7) . '-01');
+        $last = substr($values['end_date'], 0, 7);
+        $proposed = $values;
+        $proposed['id'] = 0;
+        $leaves[] = $proposed;
+        while ($first->format('Y-m') <= $last) {
+            $month = $first->format('Y-m');
+            $start = $first->format('Y-m-d');
+            $end = $first->format('Y-m-t');
+            $ids = array();
+            foreach ($leaves as $leave) {
+                if ($leave['start_date'] > $end || $leave['end_date'] < $start) continue;
+                foreach ($employees as $employee) {
+                    $id = (int) $employee['user_id'];
+                    if ($leave['all_employees'] || in_array($id, $leave['employee_ids'], true)) $ids[$id] = true;
+                }
+            }
+            $limit = $this->get_month_limit($month, count($employees));
+            if (count($ids) > $limit) $warnings[] = array('month' => $month, 'count' => count($ids), 'limit' => $limit);
+            $first->modify('+1 month');
+        }
+        return $warnings;
     }
 
     public function create($data)

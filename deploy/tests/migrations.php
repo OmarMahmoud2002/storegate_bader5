@@ -31,7 +31,7 @@ try {
     check(str_contains($plan, 'Pending:'), 'Plan did not list pending migrations.');
     check((int) $db->query('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()')->fetchColumn() === 4, 'Plan wrote to the database.');
     quietMigration($db, $directory);
-    check((int) $db->query('SELECT COUNT(*) FROM _storegate_schema_migrations')->fetchColumn() === 2, 'Migration ledger incomplete.');
+    check((int) $db->query('SELECT COUNT(*) FROM _storegate_schema_migrations')->fetchColumn() === 3, 'Migration ledger incomplete.');
     check((int) $db->query("SELECT COUNT(*) FROM tbl_product_quantity_updates")->fetchColumn() === 0, 'Quantity table was seeded during deployment.');
     check(deploymentFingerprint($db, $originalData) === $originalData, 'Existing application data was changed.');
     $db->exec("UPDATE current_store_items SET item_description = 'Unexpected change' WHERE id = 1");
@@ -69,7 +69,7 @@ try {
     $failedAsExpected = false;
     try { quietMigration($db, $temp); } catch (PDOException $error) { $failedAsExpected = true; }
     check($failedAsExpected, 'Expected failure was ignored.');
-    check((int) $db->query('SELECT COUNT(*) FROM _storegate_schema_migrations')->fetchColumn() === 2, 'Failed migration marked complete.');
+    check((int) $db->query('SELECT COUNT(*) FROM _storegate_schema_migrations')->fetchColumn() === 3, 'Failed migration marked complete.');
     file_put_contents($failed, '<?php return static function (DeploymentSchema $s): void { $s->create("test_retry", "id INT PRIMARY KEY"); $s->create("test_invalid_type", "id INT PRIMARY KEY"); };');
     quietMigration($db, $temp);
     check((int) $db->query('SELECT COUNT(*) FROM test_retry')->fetchColumn() === 0, 'Recovery after partial DDL failed.');

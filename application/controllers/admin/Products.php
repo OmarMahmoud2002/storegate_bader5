@@ -34,6 +34,15 @@ class Products extends MY_Controller
                 'section_name' => 'الصفحات الرئيسية والمخزون',
                 'section_icon' => 'bi-box-seam',
             ),
+            array(
+                'key' => 'product_search.notes.delete',
+                'label' => 'حذف ملاحظات السيريال',
+                'type' => 'delete',
+                'page_label' => 'البحث عن منتج',
+                'route' => 'admin/products/search',
+                'section_name' => 'الصفحات الرئيسية والمخزون',
+                'section_icon' => 'bi-box-seam',
+            ),
         ), 'product_search.view');
 
         notifications($this);
@@ -535,6 +544,9 @@ class Products extends MY_Controller
                     'message' => $uploadMessage ?: 'لم يتم استلام ملف Excel.',
                     'reason' => $uploadReason,
                     'requires_confirmation' => $requiresConfirmation,
+                    'uploaded_at_label' => $uploadStatus === 'success'
+                        ? 'آخر رفع لملف المخزون: ' . $uploadTime->format('d/m/Y h:i') . ' ' . ($uploadTime->format('A') === 'AM' ? 'ص' : 'م') . ' (منذ أقل من دقيقة)'
+                        : '',
                 ), JSON_UNESCAPED_UNICODE));
             return;
         }
@@ -966,6 +978,55 @@ class Products extends MY_Controller
         ));
     }
 
+
+    function delete_serial_note()
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            redirect(base_url());
+            return;
+        }
+
+        $this->output->set_content_type('application/json', 'utf-8');
+        $this->check_permission('product_search.notes.delete');
+
+        if (strtoupper((string) $this->input->method()) !== 'POST') {
+            echo json_encode(array('status' => 'error', 'description' => 'طريقة الطلب غير صحيحة'));
+            return;
+        }
+
+        $id = filter_var($this->input->post('id'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        $note = $id ? $this->SerialNotes->get_by_id($id) : null;
+        if (!$note) {
+            echo json_encode(array('status' => 'error', 'description' => 'الملاحظة غير موجودة، أعد البحث لتحديث النتائج'));
+            return;
+        }
+
+        $item = $this->find_item_by_serial($note['serial_number']);
+        $this->db->trans_begin();
+        $deleted = $this->SerialNotes->delete_note($id);
+        if (!$deleted || $this->db->affected_rows() !== 1) {
+            $this->db->trans_rollback();
+            echo json_encode(array('status' => 'error', 'description' => 'تعذر حذف الملاحظة، أعد البحث وحاول مرة أخرى'));
+            return;
+        }
+
+        $saved = $this->Operations->add_operation(array(
+            'item_description' => $item != null ? $item['item_description'] : '',
+            'item_code' => $item != null ? $item['item_code'] : '',
+            'serial' => $note['serial_number'],
+            'operation' => 'تم حذف الملاحظة "' . $note['note'] . '"',
+            'sales_order' => '0',
+        ), $this->session->userdata('user_id'));
+
+        if (!$saved || !$this->db->trans_status()) {
+            $this->db->trans_rollback();
+            echo json_encode(array('status' => 'error', 'description' => 'تعذر تسجيل العملية، لم يتم حذف الملاحظة'));
+            return;
+        }
+
+        $this->db->trans_commit();
+        echo json_encode(array('status' => 'ok', 'description' => 'تم حذف الملاحظة بنجاح'));
+    }
 
     function get_item_categories_by_serial_part()
     {

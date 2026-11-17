@@ -1008,6 +1008,56 @@ input {
   font-weight: 700;
 }
 
+.serial-note-delete-modal {
+  z-index: 10050;
+}
+
+.serial-note-delete-modal .serial-note-modal-card {
+  width: min(520px, 100%);
+}
+
+.serial-note-delete-preview {
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #e8eaf3;
+  border-radius: 12px;
+  background: #f8f9ff;
+  color: #344054;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.serial-note-delete-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+  padding: 5px 9px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #b42318;
+  font: inherit;
+  cursor: pointer;
+}
+
+.serial-note-delete-button:hover {
+  background: #ffe4e6;
+}
+
+.serial-note-delete-button:focus-visible {
+  outline: 2px solid #b42318;
+  outline-offset: 2px;
+}
+
+.serial-note-delete-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .serial-notes-list-compact {
   min-width: min(360px, 55vw);
   padding: 4px 0;

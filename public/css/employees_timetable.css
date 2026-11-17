@@ -411,6 +411,46 @@
   flex-wrap: wrap;
 }
 
+.employees-timetable-page .timetable-toolbar .timetable-leaves-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-inline-start: auto;
+  min-width: 165px;
+  min-height: 54px;
+  padding: 12px 24px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 6px 16px rgba(102, 126, 234, .25);
+  transition: box-shadow .2s, filter .2s;
+}
+
+.employees-timetable-page .timetable-leaves-button i {
+  font-size: 23px;
+  line-height: 1;
+}
+
+.employees-timetable-page .timetable-toolbar .timetable-leaves-button:hover {
+  color: #fff;
+  filter: brightness(1.06);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, .35);
+}
+
+.employees-timetable-page .timetable-leaves-button:focus-visible {
+  outline: 3px solid #a99bec;
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .employees-timetable-page .timetable-leaves-button { transition: none; }
+}
+
 .employees-timetable-page .timetable-week-filter .btn-group {
   max-width: 100%;
   overflow-x: auto;

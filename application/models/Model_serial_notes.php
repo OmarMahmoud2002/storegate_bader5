@@ -96,6 +96,11 @@ class Model_serial_notes extends CI_Model
         return $inserted ? (int) $this->db->insert_id() : false;
     }
 
+    public function get_by_id($id)
+    {
+        return $this->db->get_where($this->table, array('id' => (int) $id))->row_array();
+    }
+
     public function delete_note($id)
     {
         return $this->db->delete($this->table, array('id' => (int) $id));

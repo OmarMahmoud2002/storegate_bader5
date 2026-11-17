@@ -4,15 +4,23 @@ document.addEventListener('DOMContentLoaded', function () {
     // Keep the dialog outside the scrolling application shell and its stacking context.
     document.body.appendChild(modal);
     modal.addEventListener('shown.bs.modal', function () {
-      const target = document.getElementById('leave-error') || document.getElementById('leave-name');
+      const target = document.getElementById('leave-capacity-warning') || document.getElementById('leave-error') || document.getElementById('leave-name');
       if (target) target.focus();
     });
-    if (document.getElementById('leave-error')) {
+    if (document.getElementById('leave-error') || document.getElementById('leave-capacity-warning')) {
       bootstrap.Modal.getOrCreateInstance(modal).show();
     }
   }
   const form = document.getElementById('leave-form');
   if (form) {
+    // A changed request requires a fresh server capacity check before it can be confirmed.
+    form.addEventListener('input', function () {
+      const token = document.getElementById('leave-confirmation-token');
+      if (token) {
+        token.value = '';
+        document.getElementById('leave-save').textContent = 'حفظ الإجازة';
+      }
+    });
     const all = document.getElementById('leave-all');
     const employees = document.getElementById('leave-employees');
     const start = document.getElementById('leave-start');

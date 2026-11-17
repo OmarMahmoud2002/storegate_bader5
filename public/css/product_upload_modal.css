@@ -1,0 +1,71 @@
+.product-upload-modal .serial-note-modal-card {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+
+.product-upload-file-label {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 25px 16px;
+  border: 2px dashed #c9cef5;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f5f7ff, #faf5ff);
+  color: #344054;
+  text-align: center;
+  cursor: pointer;
+}
+
+.product-upload-file-label > i { font-size: 38px; color: #7660bd; }
+.product-upload-file-label > span { font-size: 12px; color: #667085; }
+.product-upload-file-label input { max-width: 100%; font: inherit; font-size: 13px; }
+.product-upload-modal .serial-note-modal-actions { flex-wrap: wrap; }
+.product-upload-modal button:disabled { opacity: .6; cursor: wait; }
+.product-upload-progress { display: grid; gap: 12px; margin-top: 18px; padding: 17px; border: 1px solid #e2e5fa; border-radius: 14px; background: #f8f9ff; color: #667085; font-size: 13px; }
+.product-upload-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.product-upload-progress-track { height: 12px; overflow: hidden; border-radius: 99px; background: #e5e7f5; direction: ltr; }
+.product-upload-progress-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #667eea, #9564ce); transition: width .25s ease; }
+.product-upload-progress.is-processing .product-upload-progress-track span { background-size: 28px 28px; background-image: linear-gradient(135deg, rgba(255,255,255,.22) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.22) 50%, rgba(255,255,255,.22) 75%, transparent 75%), linear-gradient(90deg, #667eea, #9564ce); animation: product-upload-processing 1s linear infinite; }
+.product-upload-progress small { color: #8a94a6; }
+@keyframes product-upload-processing { to { background-position: 28px 0, 0 0; } }
+.product-upload-toast { position: fixed; inset-inline-start: 50%; bottom: 30px; transform: translateX(50%); z-index: 11000; display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); padding: 16px 24px; border: 1px solid #abefc6; border-radius: 16px; background: #fff; color: #027a48; box-shadow: 0 12px 40px rgba(16, 24, 40, .16); font-family: "Tajawal", sans-serif; font-weight: 800; }
+.product-upload-toast i { font-size: 25px; }
+@media (prefers-reduced-motion: reduce) { .product-upload-progress-track span { transition: none; animation: none !important; } }
+@media (max-width: 600px) { .product-upload-modal { padding: 12px; } .product-upload-modal .serial-note-modal-head, .product-upload-modal .serial-note-form { padding: 18px; } .product-upload-modal .serial-note-modal-title > span { display: none; } }
+.product-upload-message { margin: 18px 0 0; padding: 14px; border-radius: 12px; font-weight: 700; line-height: 1.8; overflow-wrap: anywhere; }
+.product-upload-message.is-error { background: #fff1f2; color: #b42318; border: 1px solid #fecaca; }
+.product-upload-message.is-warning { background: #fffaeb; color: #93370d; border: 1px solid #fedf89; }
+.product-upload-message.is-success { background: #ecfdf3; color: #027a48; border: 1px solid #abefc6; }
+
+.product-upload-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(21, 30, 50, .52);
+  backdrop-filter: blur(5px);
+  font-family: "Tajawal", sans-serif;
+}
+.product-upload-modal *, .product-upload-toast { box-sizing: border-box; }
+.product-upload-modal.hide, .product-upload-modal .hide, .product-upload-toast.hide { display: none !important; }
+.product-upload-modal .serial-note-modal-card {
+  width: min(560px, 100%);
+  border: 1px solid rgba(102, 126, 234, .18);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(31, 42, 68, .28);
+}
+.product-upload-modal .serial-note-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 21px 23px; border-bottom: 1px solid #e8eaf3; background: linear-gradient(135deg, #f4f6ff, #f8f4ff); }
+.product-upload-modal .serial-note-modal-title { display: flex; align-items: center; gap: 13px; }
+.product-upload-modal .serial-note-modal-title > span { display: grid; place-items: center; width: 45px; height: 45px; flex: 0 0 45px; border-radius: 14px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+.product-upload-modal h2 { margin: 0 0 3px; color: #23314d; font-size: 20px; font-weight: 900; }
+.product-upload-modal .serial-note-modal-title p { margin: 0; color: #667085; font-size: 13px; line-height: 1.7; }
+.product-upload-modal .serial-note-modal-close { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; border: 0; border-radius: 11px; background: #fff; color: #667085; cursor: pointer; }
+.product-upload-modal .serial-note-form { padding: 23px; }
+.product-upload-modal .serial-note-modal-actions { display: flex; gap: 10px; margin-top: 22px; }
+.product-upload-modal .serial-note-modal-actions button { min-height: 43px; padding: 9px 16px; border-radius: 12px; font: inherit; font-weight: 800; cursor: pointer; }
+.product-upload-modal .serial-note-cancel-button { border: 1px solid #d0d5dd; background: #fff; color: #475467; }
+.product-upload-modal .serial-note-save-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; box-shadow: 0 10px 22px rgba(102, 126, 234, .22); }
+.product-upload-modal button:focus-visible, .product-upload-modal input:focus-visible { outline: 2px solid #7660bd; outline-offset: 3px; }

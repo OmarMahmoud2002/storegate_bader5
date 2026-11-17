@@ -26,7 +26,7 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
                 </div>
                 <?php if ($can_upload_products): ?>
                 <div class="col-md-4 text-end">
-                    <a href="<?= base_url('admin/products/add') ?>" class="btn-modern-primary">
+                    <a href="<?= base_url('admin/products/add') ?>" id="openProductUploadModal" class="btn-modern-primary" aria-haspopup="dialog" aria-controls="productUploadModal">
                         <i class="bi bi-plus-circle-fill me-2"></i>
                         إضافة منتجات
                     </a>
@@ -402,4 +402,7 @@ $can_edit_products = $CI->get_permission_enabled('products.edit.view');
 <script src="<?php echo base_url(); ?>public/js/script.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 <script src="<?php echo base_url(); ?>public/js/home.js?a=<?php $date=date_create();echo date_timestamp_get($date);?>"></script>
 
+<?php if ($can_upload_products): ?>
+<?php $this->load->view('products/upload_modal', array('can_upload_products' => $can_upload_products)); ?>
+<?php endif; ?>
 <?php $this->view('view_footer'); ?>

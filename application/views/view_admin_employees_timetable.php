@@ -47,6 +47,12 @@ $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetab
         <option value="11">ديسمبر</option>
       </select>
     </div>
+    <?php if ($CI->get_permission_enabled('employees_leaves.view')): ?>
+    <a class="btn btn-primary timetable-leaves-button" href="<?=base_url().MOD_VALUE.'admin/employees_leaves'?>">
+      <i class="bi bi-calendar2-check" aria-hidden="true"></i>
+      <span>الإجازات</span>
+    </a>
+    <?php endif; ?>
   </div>
 
   <div class="mb-3 timetable-week-filter">
