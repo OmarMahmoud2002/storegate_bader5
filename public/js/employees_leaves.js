@@ -1,10 +1,52 @@
 document.addEventListener('DOMContentLoaded', function () {
+  const yearFilter = document.getElementById('leave-year');
+  const monthFilter = document.getElementById('leave-month');
+  function filterMonth() {
+    const latest = yearFilter.dataset.latestMonth;
+    const max = yearFilter.value === latest.slice(0, 4) ? Number(latest.slice(5, 7)) : 12;
+    document.getElementById('leave-month-value').value = yearFilter.value + '-' + String(Math.min(Number(monthFilter.value), max)).padStart(2, '0');
+    yearFilter.form.requestSubmit();
+  }
+  yearFilter.addEventListener('change', filterMonth);
+  monthFilter.addEventListener('change', filterMonth);
+
+  const limitModal = document.getElementById('leave-limit-modal');
+  document.body.appendChild(limitModal);
+  const limits = JSON.parse(document.getElementById('leave-month-limits').textContent);
+  const limitYear = document.getElementById('limit-year');
+  const limitInputs = Array.from(limitModal.querySelectorAll('[data-limit-month]'));
+  let displayedLimitYear = limitYear.value;
+  const drafts = {};
+  limitYear.addEventListener('change', function () {
+    drafts[displayedLimitYear] = limitInputs.map(input => input.value);
+    displayedLimitYear = limitYear.value;
+    limitInputs.forEach((input, index) => {
+      const key = displayedLimitYear + '-' + input.dataset.limitMonth.padStart(2, '0');
+      input.value = drafts[displayedLimitYear]?.[index] ?? limits[key] ?? document.getElementById('leave-default-limit').dataset.count;
+    });
+  });
+  if (document.getElementById('leave-limit-error')) bootstrap.Modal.getOrCreateInstance(limitModal).show();
+
+  document.querySelectorAll('[data-leave-details]').forEach(cell => {
+    // Bootstrap treats the native title as a separate popover heading.
+    cell.removeAttribute('title');
+    const popover = bootstrap.Popover.getOrCreateInstance(cell, {
+      content: cell.dataset.leaveDetails, trigger: 'hover focus', placement: 'auto',
+      container: 'body', customClass: 'leave-details-popover', html: false
+    });
+    cell.addEventListener('click', () => { cell.focus(); popover.show(); });
+    cell.addEventListener('keydown', event => {
+      if (event.key === 'Escape') popover.hide();
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); popover.show(); }
+    });
+  });
   const modal = document.getElementById('leave-modal');
   if (modal) {
     // Keep the dialog outside the scrolling application shell and its stacking context.
     document.body.appendChild(modal);
     modal.addEventListener('shown.bs.modal', function () {
-      const target = document.getElementById('leave-capacity-warning') || document.getElementById('leave-error') || document.getElementById('leave-name');
+      const nameInput = document.getElementById('leave-name');
+      const target = document.getElementById('leave-capacity-warning') || document.getElementById('leave-error') || (nameInput.disabled ? modal.querySelector('[name="leave_type"]') : nameInput);
       if (target) target.focus();
     });
     if (document.getElementById('leave-error') || document.getElementById('leave-capacity-warning')) {
@@ -13,6 +55,25 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   const form = document.getElementById('leave-form');
   if (form) {
+    const nameField = document.getElementById('leave-name-field');
+    const nameInput = document.getElementById('leave-name');
+    const typeInputs = Array.from(form.querySelectorAll('[name="leave_type"]'));
+    let selectedType = typeInputs.find(input => input.checked)?.value || '';
+    const namesByType = {};
+    if (selectedType) namesByType[selectedType] = nameInput.value;
+    function showLeaveName(focus) {
+      nameField.hidden = !selectedType;
+      nameInput.disabled = !selectedType;
+      if (!selectedType) return;
+      nameInput.value = namesByType[selectedType] ?? (selectedType === 'annual' ? 'إجازة سنوية' : '');
+      if (focus) nameInput.focus();
+    }
+    showLeaveName(false);
+    typeInputs.forEach(input => input.addEventListener('change', function () {
+      if (selectedType) namesByType[selectedType] = nameInput.value;
+      selectedType = input.value;
+      showLeaveName(true);
+    }));
     // A changed request requires a fresh server capacity check before it can be confirmed.
     form.addEventListener('input', function () {
       const token = document.getElementById('leave-confirmation-token');

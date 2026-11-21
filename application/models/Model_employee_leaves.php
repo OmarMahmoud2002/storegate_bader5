@@ -12,6 +12,8 @@ class Model_employee_leaves extends CI_Model
             $this->db->query("CREATE TABLE IF NOT EXISTS employee_leaves (
                 id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(150) NOT NULL,
+                leave_type VARCHAR(20) NOT NULL DEFAULT 'annual',
+                color CHAR(7) NOT NULL DEFAULT '#151515',
                 start_date DATE NOT NULL,
                 end_date DATE NOT NULL,
                 all_employees TINYINT(1) NOT NULL DEFAULT 1,
@@ -20,6 +22,11 @@ class Model_employee_leaves extends CI_Model
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 KEY leave_dates (start_date, end_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
+        foreach (array('leave_type' => "VARCHAR(20) NOT NULL DEFAULT 'annual'", 'color' => "CHAR(7) NOT NULL DEFAULT '#151515'") as $column => $definition) {
+            if (!$this->db->field_exists($column, 'employee_leaves')) {
+                $this->db->query("ALTER TABLE employee_leaves ADD COLUMN `$column` $definition");
+            }
         }
         if (!$this->db->table_exists('employee_leave_month_limits')) {
             $this->db->query("CREATE TABLE IF NOT EXISTS employee_leave_month_limits (
@@ -53,9 +60,18 @@ class Model_employee_leaves extends CI_Model
 
     public function get_month_limit($month, $default)
     {
-        $row = $this->db->where('month <=', $month . '-01')->order_by('month', 'DESC')
+        $row = $this->db->where('month', $month . '-01')
             ->limit(1)->get('employee_leave_month_limits')->row_array();
         return $row ? (int) $row['employee_limit'] : (int) $default;
+    }
+
+    public function get_month_limits()
+    {
+        $limits = array();
+        foreach ($this->db->get('employee_leave_month_limits')->result_array() as $row) {
+            $limits[substr($row['month'], 0, 7)] = (int) $row['employee_limit'];
+        }
+        return $limits;
     }
 
     public function save_month_limit($month, $limit, $user_id)
@@ -64,6 +80,22 @@ class Model_employee_leaves extends CI_Model
             'month' => $month . '-01', 'employee_limit' => $limit, 'updated_by' => $user_id,
             'updated_at' => date('Y-m-d H:i:s'),
         ));
+    }
+
+    public function save_year_limits($year, $limits, $user_id)
+    {
+        $this->db->trans_begin();
+        foreach ($limits as $number => $limit) {
+            if (!$this->save_month_limit(sprintf('%04d-%02d', $year, $number), $limit, $user_id)) {
+                $this->db->trans_rollback();
+                return false;
+            }
+        }
+        if ($this->db->trans_status() === false) {
+            $this->db->trans_rollback();
+            return false;
+        }
+        return $this->db->trans_commit();
     }
 
     // Count distinct employees per month, including the proposed leave, never leave records.

@@ -12,7 +12,7 @@ class Employees_leaves extends MY_Controller
         }
         $this->Permissions->ensure_employee_leave_permissions();
         $this->load->model('Model_employee_leaves', 'Leaves');
-        date_default_timezone_set('Asia/Riyadh');
+        date_default_timezone_set('Africa/Cairo');
     }
 
     public function index()
@@ -28,9 +28,12 @@ class Employees_leaves extends MY_Controller
         $data['can_delete'] = $this->get_permission_enabled('employees_leaves.delete');
         $data['can_set_limit'] = $this->get_permission_enabled('employees_leaves.limit.update');
         $data['can_view_timetable'] = $this->get_permission_enabled('employees_timetable.view');
-        $data['values'] = array('name' => '', 'start_date' => '', 'end_date' => '', 'all_employees' => 1, 'employee_ids' => array());
+        $data['values'] = array('leave_type' => '', 'color' => '#151515', 'name' => '', 'start_date' => '', 'end_date' => '', 'all_employees' => 1, 'employee_ids' => array());
+        require_once dirname(__DIR__, 2) . '/libraries/Timetable_period.php';
+        $period = new Timetable_period();
+        $data['latest_month'] = $period->latest_month();
         $month = (string) $this->input->get('month');
-        if (!preg_match('/^[1-9][0-9]{3}-(0[1-9]|1[0-2])$/D', $month)) $month = date('Y-m');
+        if (!preg_match('/^[1-9][0-9]{3}-(0[1-9]|1[0-2])$/D', $month) || $month < '2024-01' || $month > $data['latest_month']) $month = $period->today()->format('Y-m');
         $data['month'] = $month;
         $data['capacity_warnings'] = array();
         $data['confirmation_token'] = '';
@@ -38,21 +41,40 @@ class Employees_leaves extends MY_Controller
         $data['limit_error'] = '';
         if ($this->input->method() === 'post' && $this->input->post('action') === 'save_limit') {
             $this->check_permission('employees_leaves.limit.update');
-            $limit = filter_var($this->input->post('employee_limit'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 0, 'max_range' => 2147483647)));
-            if ($limit === false || $limit === null) {
-                $data['limit_error'] = 'اكتب عددًا صحيحًا يساوي صفرًا أو أكثر.';
-            } elseif ($this->Leaves->save_month_limit($month, $limit, (int) $this->session->userdata('user_id'))) {
-                $this->session->set_flashdata('leave_success', 'تم حفظ العدد المسموح لهذا الشهر.');
+            $limit_year = filter_var($this->input->post('limit_year'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 2024, 'max_range' => (int) substr($data['latest_month'], 0, 4) + 1)));
+            $posted_limits = $this->input->post('employee_limits');
+            $limits = array();
+            if ($limit_year === false || $limit_year === null) {
+                $data['limit_error'] = 'اختر سنة صحيحة.';
+            } else {
+                $data['limit_year'] = $limit_year;
+                $data['limit_values'] = is_array($posted_limits) ? $posted_limits : array();
+                for ($number = 1; $number <= 12; $number++) {
+                    $value = is_array($posted_limits) && isset($posted_limits[$number]) ? $posted_limits[$number] : null;
+                    $limit = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_INT, array('options' => array('min_range' => 0, 'max_range' => 2147483647))) : false;
+                    if ($limit === false || $limit === null) {
+                        $data['limit_error'] = 'اكتب عددًا صحيحًا يساوي صفرًا أو أكثر لكل شهر من شهور السنة.';
+                        break;
+                    }
+                    $limits[$number] = $limit;
+                }
+                if (is_array($posted_limits) && count($posted_limits) !== 12) $data['limit_error'] = 'حدد العدد للشهور الاثني عشر فقط.';
+            }
+            if (!$data['limit_error'] && $this->Leaves->save_year_limits($limit_year, $limits, (int) $this->session->userdata('user_id'))) {
+                $this->session->set_flashdata('leave_success', 'تم حفظ أعداد الموظفين المسموح لهم بالإجازة لكل شهور سنة ' . $limit_year . '.');
                 redirect(base_url() . MOD_VALUE . 'admin/employees_leaves?month=' . $month);
                 return;
-            } else {
-                $data['limit_error'] = 'تعذر حفظ العدد المسموح.';
+            } elseif (!$data['limit_error']) {
+                $data['limit_error'] = 'تعذر حفظ أعداد السنة. حاول مرة أخرى.';
             }
         }
+        $data['month_limits'] = $this->Leaves->get_month_limits();
         $data['employee_limit'] = $this->Leaves->get_month_limit($month, count($data['employees']));
         if ($this->input->method() === 'post' && $this->input->post('action') !== 'save_limit') {
             $this->check_permission('employees_leaves.create');
             $values = array(
+                'leave_type' => (string) ($this->input->post('leave_type') ?? 'annual'),
+                'color' => (string) ($this->input->post('color') ?? '#151515'),
                 'name' => trim((string) $this->input->post('name')),
                 'start_date' => (string) $this->input->post('start_date'),
                 'end_date' => (string) $this->input->post('end_date'),
@@ -65,7 +87,11 @@ class Employees_leaves extends MY_Controller
                 $date = DateTime::createFromFormat('!Y-m-d', $value);
                 return $date && $date->format('Y-m-d') === $value && $value >= '1000-01-01';
             };
-            if ($values['name'] === '' || mb_strlen($values['name']) > 150) {
+            if (!in_array($values['leave_type'], array('annual', 'occasion'), true)) {
+                $data['error'] = 'اختر نوع الإجازة: سنوية أو مناسبات.';
+            } elseif (!preg_match('/^#[0-9a-fA-F]{6}$/D', $values['color'])) {
+                $data['error'] = 'اختر لونًا صحيحًا لمربع الإجازة.';
+            } elseif ($values['name'] === '' || mb_strlen($values['name']) > 150) {
                 $data['error'] = 'اكتب اسم الإجازة بحد أقصى 150 حرفًا.';
             } elseif (!$valid_date($values['start_date']) || !$valid_date($values['end_date'])) {
                 $data['error'] = 'حدد تاريخ بداية ونهاية صحيحين.';

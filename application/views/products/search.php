@@ -311,6 +311,11 @@ if ($stock_upload_time !== false) {
                   data-serial_control='<?= $cart_item->serial_control ?>'>
                   <?php
                   $item = $this->Store->get_store_item(['id' => $cart_item->item_id]);
+                  $cart_item_images = $this->Store->get_store_item_images($item['item_code']);
+                  $cart_item_image = !empty($cart_item_images[0]['filename'])
+                    ? $cart_item_images[0]['filename']
+                    : 'default_product_image.png';
+                  $cart_item_image_url = base_url('public/img/products/' . $cart_item_image);
                   $shelf_id = $this->Store->get_item_shelf($item['item_code'], $item['serial_number'], $item['barcode']);
 
                   if ($shelf_id) {
@@ -322,9 +327,9 @@ if ($stock_upload_time !== false) {
                   ?>
 
                   <input type="checkbox" onchange="toggleItemSelection(this)">
-                  <a href="/public/img/products/default_product_image.png" class="img" data-fancybox="cart-gallery"
-                    data-caption="Product 1">
-                    <img src="/public/img/products/default_product_image.png" />
+                  <a href="<?= html_escape($cart_item_image_url) ?>" class="img" data-fancybox="cart-gallery"
+                    data-caption="<?= html_escape($item['item_description']) ?>">
+                    <img src="<?= html_escape($cart_item_image_url) ?>" alt="<?= html_escape($item['item_description']) ?>" />
                   </a>
                   <div class="item-details">
                     <div class="l">
@@ -465,7 +470,7 @@ if ($stock_upload_time !== false) {
                   </button>
                 </td>
               </tr>
-              <tr>
+              <tr id="productBarcodeRow" class="hide">
                 <td>رقم الباركود</td>
                 <td id='item_barcode'></td>
               </tr>

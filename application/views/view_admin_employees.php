@@ -24,6 +24,7 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
       <div class="products-area-wrapper tableView">
         <div class="products-header">
           <div class="product-cell image">اسم الموظف</div>
+          <div class="product-cell status">نوع الموظف</div>
           <div class="product-cell added-date">تاريخ الاظافة</div>
           <div class="product-cell actions">اجراء</div>
         </div>
@@ -41,6 +42,7 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
               <span><?php echo $row['user_fillname']; ?></span>
             <?php endif; ?>
           </div>
+          <div class="product-cell status"><span class="cell-label">نوع الموظف:</span><?= array('supervisor' => 'مشرف', 'employee' => 'موظف', 'consultant' => 'استشاري')[$row['employee_type'] ?? 'employee'] ?? 'موظف' ?></div>
           <div class="product-cell added-date"><span class="cell-label">تاريخ الاظافة:</span><?php echo safe_data($row['user_create_date']); ?></div>
           <div class="product-cell actions">
             <?php if ($can_delete_employee): ?>
@@ -88,6 +90,15 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
           </div>
           <?php echo form_open(base_url().MOD_VALUE.'admin/registration',array('class' => '')); ?>
           <input name="user_type" type="hidden" value="user">
+<div class="inpt">
+              <label for="employeeType">نوع الموظف</label>
+              <select id="employeeType" name="employee_type" class="form-select" required>
+                <option value="supervisor">مشرف</option>
+                <option value="employee" selected>موظف</option>
+                <option value="consultant">استشاري</option>
+              </select>
+            </div>
+
             <div class="inpt">
               <label>اسم الموظف</label>
               <input name="user_fillname" type="text" placeholder="اسم الموظف">

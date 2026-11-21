@@ -311,6 +311,14 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
             <?php echo form_open(base_url().MOD_VALUE.'index.php/admin/edit_emp_info',array('class' => '')); ?>
             <input type="hidden" name="user_id" value="<?php echo safe_data($employee['user_id']); ?>" >    
               <div class="inpt">
+                <label for="employeeType">نوع الموظف</label>
+                <select id="employeeType" name="employee_type" class="form-select" required <?= !$can_edit_employee ? 'disabled' : '' ?>>
+                  <?php foreach (array('supervisor' => 'مشرف', 'employee' => 'موظف', 'consultant' => 'استشاري') as $type => $label): ?>
+                    <option value="<?= $type ?>" <?= ($employee['employee_type'] ?? 'employee') === $type ? 'selected' : '' ?>><?= $label ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="inpt">
                 <label>اسم الموظف</label>
                 <input type="text" name="user_fillname" value="<?php echo safe_data($employee['user_fillname']); ?>">
               </div>

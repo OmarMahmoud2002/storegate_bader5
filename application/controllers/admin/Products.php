@@ -1078,7 +1078,7 @@ class Products extends MY_Controller
                 return;
             }
 
-            if ($this->SerialNotes->has_notes($upper_term)) {
+            if ($this->SerialNotes->has_notes($upper_term) || !empty($this->Operations->get_operations_by_serial($upper_term))) {
                 echo json_encode([
                     'status' => 'ok',
                     'type' => 'noted_serial',
@@ -1120,7 +1120,7 @@ class Products extends MY_Controller
         }
 
         // قد يحمل السيريال ملاحظات حتى لو لم يكن مسجلًا في المخزون.
-        if ($this->SerialNotes->has_notes($term)) {
+        if ($this->SerialNotes->has_notes($term) || !empty($this->Operations->get_operations_by_serial($term))) {
             echo json_encode([
                 'status' => 'ok',
                 'type' => 'noted_serial',
@@ -1160,6 +1160,7 @@ class Products extends MY_Controller
                     : 'السيريال غير موجود',
                 'serial_number' => $serialnumber_input,
                 'notes' => $notes,
+                'has_history' => count($notes) > 0 || !empty($this->Operations->get_operations_by_serial($serialnumber_input)),
             ]);
             return;
         }

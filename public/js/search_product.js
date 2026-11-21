@@ -78,7 +78,10 @@ function render_serial_notes(container, notes) {
 
     const text = document.createElement('p');
     text.textContent = note.note || '';
-    item.appendChild(text);
+    const heading = document.createElement('div');
+    heading.className = 'serial-note-item-heading';
+    heading.appendChild(text);
+    item.appendChild(heading);
 
     const meta = document.createElement('div');
     meta.className = 'serial-note-item-meta';
@@ -93,16 +96,21 @@ function render_serial_notes(container, notes) {
     date.appendChild(document.createTextNode(note.created_at || ''));
     meta.appendChild(date);
 
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'serial-note-delete-button';
+    deleteButton.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i>';
+    deleteButton.setAttribute('aria-label', 'حذف الملاحظة');
+    deleteButton.disabled = !window.canDeleteSerialNote;
+    deleteButton.title = window.canDeleteSerialNote
+      ? 'حذف الملاحظة'
+      : 'ليس لديك صلاحية حذف ملاحظات السيريال';
     if (window.canDeleteSerialNote) {
-      const deleteButton = document.createElement('button');
-      deleteButton.type = 'button';
-      deleteButton.className = 'serial-note-delete-button';
-      deleteButton.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i> حذف الملاحظة';
       deleteButton.addEventListener('click', function () {
         delete_serial_note(note, deleteButton);
       });
-      meta.appendChild(deleteButton);
     }
+    heading.appendChild(deleteButton);
 
     item.appendChild(meta);
     container.appendChild(item);
@@ -186,7 +194,7 @@ async function delete_serial_note(note, button) {
     window.alert('تعذر الاتصال بالخادم، يرجى المحاولة مرة أخرى');
   }).always(function () {
     button.disabled = false;
-    button.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i> حذف الملاحظة';
+    button.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i>';
   });
 }
 
@@ -206,10 +214,13 @@ function hide_noted_serial_result() {
 }
 
 function show_noted_serial_result(serial, notes, message) {
-  show_search_error(message || 'هذا السيريال غير موجود في المخزون، ولكن توجد له ملاحظات');
+  const hasNotes = Array.isArray(notes) && notes.length > 0;
+  show_search_error(message || (hasNotes
+    ? 'هذا السيريال غير موجود في المخزون، ولكن توجد له ملاحظات'
+    : 'هذا السيريال غير موجود في المخزون، ولكن توجد له عمليات سابقة'));
   render_serial_notes(serialNotesSearchList, notes);
   if (serialNotesSearchResult) {
-    serialNotesSearchResult.classList.remove('hide');
+    serialNotesSearchResult.classList.toggle('hide', !hasNotes);
   }
   $('#serialNumberHistory a').attr('href', productsBaseUrl + 'operations?serial=' + encodeURIComponent(serial));
   $('#serialNumberHistory').removeClass('hide');
@@ -565,6 +576,7 @@ function set_data(data) {
   product_data['name'] = data['name'];
   product_data['id'] = data['id'];
   product_data['serial_control'] = data['serial_control'];
+  $('#productBarcodeRow').toggleClass('hide', data['serial_control'] !== 'no');
 
   if (data['serial_control'] == 'no') {
     product_data['barcode'] = data['barcode'];
@@ -634,6 +646,9 @@ function get_product_by_serial(serial) {
         show_noted_serial_result(data['serial_number'] || serial, data['notes'], data['description']);
       } else {
         hide_noted_serial_result();
+        if (data['has_history']) {
+          show_noted_serial_result(data['serial_number'] || serial, [], data['description']);
+        }
       }
       serialNumber.disabled = false;
     }

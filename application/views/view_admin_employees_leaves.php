@@ -3,6 +3,9 @@
 <?php
 $escape = function ($value) { return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8'); };
 $url = base_url() . MOD_VALUE . 'admin/employees_leaves';
+$latest_month = isset($latest_month) ? $latest_month : date('Y-m');
+$limit_year = isset($limit_year) ? (int) $limit_year : (int) substr($month, 0, 4);
+$month_limits = isset($month_limits) ? $month_limits : array();
 $month_url = $url . '?month=' . $month;
 $employee_names = array_column($employees, 'user_fillname', 'user_id');
 $month_start = $month . '-01';
@@ -20,13 +23,13 @@ foreach ($employees as $employee) {
         if (!$leave['all_employees'] && !in_array((int) $employee['user_id'], $leave['employee_ids'], true)) continue;
         $start = max($month_start, $leave['start_date']);
         $end = min($month_end, $leave['end_date']);
-        for ($day = (int) substr($start, 8, 2); $day <= (int) substr($end, 8, 2); $day++) $days[$day][] = $leave['name'];
+        for ($day = (int) substr($start, 8, 2); $day <= (int) substr($end, 8, 2); $day++) $days[$day][] = $leave;
     }
     if ($days) $calendar[] = array('employee' => $employee, 'days' => $days);
 }
 ?>
 <link rel="stylesheet" href="<?=base_url('public/css/admin-ui-pattern.css')?>">
-<link rel="stylesheet" href="<?=base_url('public/css/employees_leaves.css')?>?v=6">
+<link rel="stylesheet" href="<?=base_url('public/css/employees_leaves.css')?>?v=10">
 <div class="app-content admin-ui-page leaves-page" dir="rtl">
   <header class="leaves-heading">
     <div><span class="leaves-eyebrow">تنظيم الدوام</span><h1>إجازات الموظفين</h1><p>خطّط للإجازات، وستظهر تلقائيًا في جداول الموظفين.</p></div>
@@ -44,19 +47,45 @@ foreach ($employees as $employee) {
   <?php endif; ?>
   <section class="leaves-panel leaves-month-toolbar">
     <form method="get" action="<?=$escape($url)?>" class="leaves-month-filter">
-      <label for="leave-month">عرض إجازات شهر</label>
-      <input type="month" id="leave-month" name="month" required min="1000-01" max="9999-12" value="<?=$escape($month)?>">
-      <button type="submit" class="leaves-secondary">عرض الشهر</button>
+      <input type="hidden" name="month" id="leave-month-value" value="<?=$escape($month)?>">
+      <div><label for="leave-year">السنة</label><select id="leave-year" data-latest-month="<?=$escape($latest_month)?>">
+        <?php for ($year = 2024; $year <= (int) substr($latest_month, 0, 4); $year++): ?><option value="<?=$year?>" <?=$year === (int) substr($month, 0, 4) ? 'selected' : ''?>><?=$year?></option><?php endfor; ?>
+      </select></div>
+      <div><label for="leave-month">الشهر</label><select id="leave-month">
+        <?php foreach ($month_names as $number => $label): if (sprintf('%s-%02d', substr($month, 0, 4), $number) > $latest_month) continue; ?><option value="<?=$number?>" <?=$number === (int) substr($month, 5, 2) ? 'selected' : ''?>><?=$escape($label)?></option><?php endforeach; ?>
+      </select></div>
+      <noscript><button type="submit" class="leaves-secondary">عرض الشهر</button></noscript>
     </form>
-    <?=form_open($month_url, array('class' => 'leaves-limit-form'))?>
-      <input type="hidden" name="action" value="save_limit">
-      <label for="employee-limit">عدد الموظفين المسموح لهم بالإجازة لشهر <?=$escape($month_label)?></label>
-      <div class="leaves-limit-controls"><input type="number" id="employee-limit" name="employee_limit" min="0" max="2147483647" step="1" required value="<?=(int)$employee_limit?>" <?=$can_set_limit ? '' : 'disabled'?>>
-      <?php if ($can_set_limit): ?><button class="leaves-secondary" type="submit">حفظ العدد</button><?php endif; ?></div>
-      <!-- <p class="leaves-hint">تُورَّث آخر قيمة مسجلة للشهور التالية حتى تعدّلها. العدد يُحسب للموظفين المختلفين خلال الشهر.</p> -->
-    <?=form_close()?>
-    <?php if ($limit_error): ?><div class="leaves-error" role="alert"><?=$escape($limit_error)?></div><?php endif; ?>
+    <button type="button" class="leaves-secondary" data-bs-toggle="modal" data-bs-target="#leave-limit-modal"><i class="bi bi-people" aria-hidden="true"></i> عدد الموظفين المسموح لهم بالإجازة</button>
   </section>
+  <div class="modal fade leaves-page leaves-modal" id="leave-limit-modal" tabindex="-1" aria-labelledby="leave-limit-title" aria-hidden="true" dir="rtl">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content leaves-panel">
+      <div class="leaves-modal-heading"><h2 id="leave-limit-title">عدد الموظفين المسموح لهم بالإجازة</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button></div>
+      <div class="modal-body">
+      <?php if ($limit_error): ?><div class="leaves-error" id="leave-limit-error" role="alert"><?=$escape($limit_error)?></div><?php endif; ?>
+      <?=form_open($month_url, array('class' => 'leaves-limit-form', 'id' => 'leave-limit-form'))?>
+        <input type="hidden" name="action" value="save_limit">
+        <label for="limit-year">السنة</label>
+        <select id="limit-year" name="limit_year"><?php for ($year = 2024; $year <= (int) substr($latest_month, 0, 4) + 1; $year++): ?><option value="<?=$year?>" <?=$year === $limit_year ? 'selected' : ''?>><?=$year?></option><?php endfor; ?></select>
+        <p class="leaves-hint">حدد عدد الموظفين المسموح لهم بالإجازة بجوار كل شهر، ثم احفظ أعداد السنة.</p>
+        <div class="leaves-year-limits" role="group" aria-label="عدد الموظفين المسموح لكل شهر">
+          <?php foreach ($month_names as $number => $label):
+            $limit_key = sprintf('%04d-%02d', $limit_year, $number);
+            $limit_value = isset($limit_values[$number]) && is_scalar($limit_values[$number]) ? $limit_values[$number] : ($month_limits[$limit_key] ?? count($employees));
+          ?>
+          <div class="leaves-month-limit-row">
+            <label for="employee-limit-<?=$number?>"><?=$escape($label)?></label>
+            <input type="number" id="employee-limit-<?=$number?>" name="employee_limits[<?=$number?>]" data-limit-month="<?=$number?>" min="0" max="2147483647" step="1" required value="<?=$escape($limit_value)?>" aria-label="عدد الموظفين المسموح لهم بالإجازة في <?=$escape($label)?>" <?=$can_set_limit ? '' : 'disabled'?>>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <div class="leaves-modal-actions"><?php if ($can_set_limit): ?><button class="leaves-primary" type="submit">حفظ أعداد السنة</button><?php endif; ?><button type="button" class="leaves-secondary" data-bs-dismiss="modal">إغلاق</button></div>
+      <?=form_close()?>
+      </div>
+      <script type="application/json" id="leave-month-limits"><?=json_encode((object)$month_limits, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?></script>
+      <span id="leave-default-limit" data-count="<?=count($employees)?>" hidden></span>
+    </div></div>
+  </div>
   <div class="leaves-layout">
     <?php if ($can_create): ?>
     <div class="modal fade leaves-page leaves-modal" id="leave-modal" tabindex="-1" aria-labelledby="leave-modal-title" aria-hidden="true" dir="rtl">
@@ -76,8 +105,18 @@ foreach ($employees as $employee) {
         </div>
         <input type="hidden" name="confirmation_token" id="leave-confirmation-token" value="<?=$escape($confirmation_token)?>">
         <?php endif; ?>
-        <label for="leave-name">اسم الإجازة</label>
-        <input id="leave-name" name="name" required maxlength="150" value="<?=$escape($values['name'])?>" placeholder="مثال: عيد الفطر، اليوم الوطني">
+        <fieldset class="leaves-type-options"><legend>نوع الإجازة</legend>
+          <div class="leaves-type-cards">
+            <label><input type="radio" name="leave_type" value="annual" <?=($values['leave_type'] ?? '') === 'annual' ? 'checked' : ''?> required aria-controls="leave-name-field"><i class="bi bi-calendar-check" aria-hidden="true"></i><span>إجازة سنوية</span></label>
+            <label><input type="radio" name="leave_type" value="occasion" <?=($values['leave_type'] ?? '') === 'occasion' ? 'checked' : ''?> required aria-controls="leave-name-field"><i class="bi bi-gift" aria-hidden="true"></i><span>إجازة مناسبات</span></label>
+          </div>
+        </fieldset>
+        <div id="leave-name-field" <?=empty($values['leave_type']) ? 'hidden' : ''?>>
+          <label for="leave-name">اسم الإجازة</label>
+          <input id="leave-name" name="name" required maxlength="150" value="<?=$escape($values['name'])?>" placeholder="مثال: عيد الفطر، اليوم الوطني" <?=empty($values['leave_type']) ? 'disabled' : ''?>>
+        </div>
+        <label for="leave-color">لون مربع الإجازة</label>
+        <input type="color" id="leave-color" name="color" value="<?=$escape($values['color'] ?? '#151515')?>" required>
         <div class="leaves-dates">
           <div><label for="leave-start">من يوم</label><input type="date" id="leave-start" name="start_date" required value="<?=$escape($values['start_date'])?>"></div>
           <div><label for="leave-end">إلى يوم</label><input type="date" id="leave-end" name="end_date" required value="<?=$escape($values['end_date'])?>"></div>
@@ -125,7 +164,6 @@ foreach ($employees as $employee) {
     <?php endif; ?>
     <section class="leaves-panel leaves-records">
       <div class="leaves-panel-title"><span class="leaves-icon"><i class="bi bi-calendar3" aria-hidden="true"></i></span><div><h2>إجازات <?=$escape($month_label)?></h2><p><?=count($calendar)?> موظف لديهم إجازات هذا الشهر — المسموح <?=(int)$employee_limit?></p></div></div>
-      <div class="leaves-calendar-legend"><span><i class="legend-weekend"></i> الجمعة والسبت</span><span><i class="legend-leave"></i> إجازة مسجلة</span><small>الإجازة المسجلة تظهر بالأسود حتى لو وافقت الجمعة أو السبت. الإجمالي يحتسب أيام الإجازة المسجلة دون تكرار.</small></div>
       <div class="leaves-calendar-scroll" role="region" aria-label="جدول إجازات الشهر" tabindex="0">
       <table class="leaves-calendar" style="--leave-calendar-width: <?=$day_count * 32 + 340?>px">
         <caption>إجازات الموظفين لشهر <?=$escape($month_label)?></caption>
@@ -136,7 +174,7 @@ foreach ($employees as $employee) {
           <col class="leave-total-column">
         </colgroup>
         <thead>
-          <tr><th rowspan="2" class="employee-name">اسم الموظف</th><th rowspan="2">الرقم</th><th colspan="<?=$day_count?>"><?=$escape($month_label)?></th><th rowspan="2" class="leave-total">إجمالي الأيام</th></tr>
+          <tr><th rowspan="2" class="employee-name">اسم الموظف</th><th rowspan="2">الرقم الوظيفي</th><th colspan="<?=$day_count?>"><?=$escape($month_label)?></th><th rowspan="2" class="leave-total">إجمالي الأيام</th></tr>
           <tr><?php for ($day = 1; $day <= $day_count; $day++):
             $date = sprintf('%s-%02d', $month, $day);
             $weekend = in_array((int) date('w', strtotime($date)), array(5, 6), true);
@@ -144,12 +182,22 @@ foreach ($employees as $employee) {
         </thead>
         <tbody>
         <?php foreach ($calendar as $row): $employee = $row['employee']; ?>
-          <tr><th scope="row" class="employee-name"><?=$escape($employee['user_fillname'])?></th><td><?=$escape(isset($employee['user_employee_Id']) ? $employee['user_employee_Id'] : $employee['user_id'])?></td>
+          <tr><th scope="row" class="employee-name"><?=$escape($employee['user_fillname'])?></th><td><?=$escape(isset($employee['job_number']) && trim((string) $employee['job_number']) !== '' ? $employee['job_number'] : '—')?></td>
           <?php for ($day = 1; $day <= $day_count; $day++):
             $date = sprintf('%s-%02d', $month, $day);
             $weekend = in_array((int) date('w', strtotime($date)), array(5, 6), true);
-            $names = isset($row['days'][$day]) ? implode('? ', array_unique($row['days'][$day])) : '';
-          ?><td class="leave-day <?=$names !== '' ? 'is-leave' : ($weekend ? 'is-weekend' : '')?>" title="<?=$escape($names !== '' ? $names : ($weekend ? 'عطلة أسبوعية' : $date))?>" <?=$names !== '' ? 'tabindex="0"' : ''?> aria-label="<?=$escape($date . ': ' . ($names !== '' ? $names : ($weekend ? 'عطلة أسبوعية' : 'لا توجد إجازة')))?>"></td><?php endfor; ?>
+            $day_leaves = $row['days'][$day] ?? array();
+            $details = array();
+            $colors = array();
+            foreach ($day_leaves as $day_leave) {
+                $details[] = $day_leave['name'] . ' — من ' . $day_leave['start_date'] . ' إلى ' . $day_leave['end_date'];
+                $color = $day_leave['color'] ?? '#151515';
+                $colors[] = preg_match('/^#[0-9a-fA-F]{6}$/D', $color) ? $color : '#151515';
+            }
+            $details = implode("\n", array_unique($details));
+            $colors = array_values(array_unique($colors));
+            $background = count($colors) > 1 ? 'linear-gradient(135deg, ' . implode(', ', $colors) . ')' : ($colors[0] ?? '');
+          ?><td class="leave-day <?=$details !== '' ? 'is-leave' : ($weekend ? 'is-weekend' : '')?>" title="<?=$escape($details !== '' ? $details : ($weekend ? 'عطلة أسبوعية' : $date))?>" <?php if ($details !== ''): ?>tabindex="0" role="button" data-leave-details="<?=$escape($details)?>" style="background:<?=$escape($background)?>"<?php endif; ?> aria-label="<?=$escape($date . ': ' . ($details !== '' ? $details : ($weekend ? 'عطلة أسبوعية' : 'لا توجد إجازة')))?>"></td><?php endfor; ?>
           <td class="leave-total"><?=count($row['days'])?></td></tr>
         <?php endforeach; ?>
         <?php if (!$calendar): ?><tr><td colspan="<?=$day_count + 3?>" class="leaves-empty">لا توجد إجازات مسجلة خلال هذا الشهر.</td></tr><?php endif; ?>
@@ -158,15 +206,15 @@ foreach ($employees as $employee) {
       </div>
       <?php if ($can_delete && $leaves): ?>
       <details class="leaves-manage-records"><summary>إدارة إجازات الشهر (<?=count($leaves)?>)</summary>
-        <div class="leaves-calendar-scroll"><table class="leaves-management-table"><thead><tr><th>اسم الإجازة</th><th>من</th><th>إلى</th><th>الموظفون</th><th>إجراء</th></tr></thead><tbody>
+        <div class="leaves-calendar-scroll"><table class="leaves-management-table" dir="rtl"><thead><tr><th>اسم الموظف</th><th>اسم الإجازة</th><th>النوع</th><th>من</th><th>إلى</th><th>إجراء</th></tr></thead><tbody>
         <?php foreach ($leaves as $leave):
           $names = array();
           foreach ($leave['employee_ids'] as $id) $names[] = isset($employee_names[$id]) ? $employee_names[$id] : 'موظف محذوف';
-        ?><tr><td><?=$escape($leave['name'])?></td><td><?=$escape($leave['start_date'])?></td><td><?=$escape($leave['end_date'])?></td><td><?=$leave['all_employees'] ? 'كل الموظفين' : $escape(implode('، ', $names))?></td><td>
+        ?><tr><td><?=$leave['all_employees'] ? 'كل الموظفين' : $escape(implode('، ', $names))?></td><td><?=$escape($leave['name'])?></td><td><?=($leave['leave_type'] ?? 'annual') === 'occasion' ? 'مناسبات' : 'سنوية'?></td><td><?=$escape($leave['start_date'])?></td><td><?=$escape($leave['end_date'])?></td><td>
           <?=form_open($url.'/delete', array('class' => 'leave-delete-form'))?>
           <input type="hidden" name="month" value="<?=$escape($month)?>">
           <input type="hidden" name="leave_id" value="<?=(int)$leave['id']?>" data-leave-name="<?=$escape($leave['name'])?>">
-          <button type="submit" class="leaves-delete"><i class="bi bi-trash3" aria-hidden="true"></i> حذف</button>
+          <button type="submit" class="leaves-delete" title="حذف" aria-label="حذف"><i class="bi bi-trash3" aria-hidden="true"></i></button>
           <?=form_close()?>
         </td></tr><?php endforeach; ?>
         </tbody></table></div>
@@ -176,5 +224,5 @@ foreach ($employees as $employee) {
   </div>
 </div>
 </div>
-<script src="<?=base_url('public/js/employees_leaves.js')?>?v=4"></script>
+<script src="<?=base_url('public/js/employees_leaves.js')?>?v=8"></script>
 <script src="<?=base_url('public/js/script.js')?>"></script>

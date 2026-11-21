@@ -183,6 +183,7 @@ $hasBarcodeQuantity = $hasNoSerial && count($serials) === 0 && (int) $totalQuant
                                 </div>
                                 
 
+                                <?php if (($product['serial_control'] ?? '') !== 'yes'): ?>
                                 <div class="info-row">
                                     <div class="info-label">
                                         <i class="bi bi-upc-scan"></i>
@@ -192,6 +193,9 @@ $hasBarcodeQuantity = $hasNoSerial && count($serials) === 0 && (int) $totalQuant
                                         <input type="text" class="bg-primary bg-opacity-10 form-control" name="barcode" value="<?= htmlspecialchars((string) ($product['barcode'] ?? '')) ?>">
                                     </div>
                                 </div>
+                                <?php else: ?>
+                                    <input type="hidden" name="barcode" value="<?= htmlspecialchars((string) ($product['barcode'] ?? '')) ?>">
+                                <?php endif; ?>
 
                                 <?php if ($update_basic_permission): ?>
                                     <div class="info-row">

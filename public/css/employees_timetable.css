@@ -1,3 +1,23 @@
+/* Role-based timetable toolbar and cells. */
+.employees-timetable-page .timetable-toolbar { flex-wrap: wrap; align-items: center; }
+.timetable-export-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.timetable-status { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0; color: #596681; }
+#approvalStatus { font-weight: 700; color: #764ba2; }
+.employees-timetable-page .timetable-week { margin-bottom: 24px; min-width: 760px; }
+.employees-timetable-page .timetable-week h3 { font-size: 16px; margin: 12px; color: #4c5675; }
+.employees-timetable-page .timetable-grid { width: 100%; table-layout: fixed; direction: rtl; }
+.employees-timetable-page .timetable-grid th, .employees-timetable-page .timetable-grid td { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.employees-timetable-page .timetable-grid .employee-name-col { width: 20%; }
+.employee-role { display: block; color: #764ba2; font-size: 11px; margin-top: 4px; }
+.schedule-cell[tabindex] { cursor: pointer; }
+.schedule-cell:focus { outline: 2px solid #667eea; outline-offset: -2px; }
+.cell-approved { cursor: default; }
+.outside-month { background: #f1f3f6 !important; color: #9ba5b5 !important; }
+.bg-store_am { background: #ffdfc2 !important; color: #57320f !important; }
+.bg-store_pm { background: #f8c8d5 !important; color: #64253a !important; }
+.timetable-note { min-height: 66px; width: 100%; resize: vertical; }
+#dropdownMenu { position: fixed; z-index: 1100; max-height: calc(100vh - 16px); overflow-y: auto; }
+.employees-timetable-page [hidden] { display: none !important; }
 /* الأنماط الأساسية */
 .btn {
   font-size: 0.85rem;
@@ -694,3 +714,140 @@ body.admin-ui-shell .employees-timetable-page #scheduleTableContainer td.managed
   }
 }
 /* End */
+
+/* Compact actions with keyboard-accessible hover labels. */
+.employees-timetable-page .timetable-toolbar {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
+.employees-timetable-page .timetable-export-actions { gap: 10px; overflow: visible; }
+.employees-timetable-page .timetable-export-actions .timetable-icon-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  padding: 0 !important;
+  border: 1px solid #e0e5fa !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+  color: #6871d8 !important;
+  box-shadow: 0 4px 12px rgba(79, 90, 155, .09);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.employees-timetable-page .timetable-icon-button i { font-size: 21px; line-height: 1; }
+.employees-timetable-page .timetable-export-actions .timetable-approval-button {
+  background: linear-gradient(135deg, #667eea, #764ba2) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+.employees-timetable-page .timetable-export-actions .timetable-approval-button.is-approved {
+  background: #edf7f1 !important;
+  color: #258158 !important;
+  border-color: #cce7d8 !important;
+}
+.employees-timetable-page .timetable-export-actions .timetable-icon-button:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(79, 90, 155, .18);
+}
+.employees-timetable-page .timetable-icon-button:focus-visible {
+  outline: 3px solid #b4baf7;
+  outline-offset: 3px;
+}
+.employees-timetable-page .timetable-icon-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  top: auto;
+  left: 50%;
+  transform: translate(-50%, -3px);
+  padding: 7px 11px;
+  border-radius: 8px;
+  background: #29324c;
+  color: white;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  width: max-content;
+  height: auto;
+  box-shadow: 0 4px 12px rgba(24, 33, 57, .18);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 20;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.employees-timetable-page .timetable-icon-button:not(:disabled):hover::after,
+.employees-timetable-page .timetable-icon-button:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.employees-timetable-page .timetable-icon-button:disabled { opacity: .5; }
+
+/* Keep every week alongside its neighbours, scrolling horizontally as needed. */
+body.admin-ui-shell .employees-timetable-page .timetable-table-shell {
+  overflow-x: auto !important;
+}
+body.admin-ui-shell .employees-timetable-page :is(#scheduleTableContainer, #supervisorsTableContainer).timetable-all-weeks {
+  display: flex;
+  flex-flow: row nowrap;
+  gap: 16px;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  direction: rtl;
+}
+.employees-timetable-page .timetable-all-weeks .timetable-week {
+  flex: 0 0 380px;
+  width: 380px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+body.admin-ui-shell .employees-timetable-page :is(#scheduleTableContainer, #supervisorsTableContainer).timetable-all-weeks table {
+  width: 100% !important;
+  min-width: 0;
+  table-layout: fixed;
+}
+body.admin-ui-shell .employees-timetable-page :is(#scheduleTableContainer, #supervisorsTableContainer).timetable-all-weeks table :is(th, td) {
+  min-width: 0 !important;
+  padding: 5px 2px;
+  font-size: 10px;
+  height: 38px;
+}
+body.admin-ui-shell .employees-timetable-page :is(#scheduleTableContainer, #supervisorsTableContainer).timetable-all-weeks table .employee-name-col {
+  width: 24% !important;
+  min-width: 0 !important;
+  max-width: none;
+  position: static;
+  background: #f1f3fa;
+}
+.employees-timetable-page .timetable-all-weeks .timetable-week h3 { font-size: 13px; margin: 10px 4px; }
+
+/* Selection remains distinct from a hovered, unselected week. */
+.employees-timetable-page .timetable-week-filter .week-btn {
+  background: #fff !important;
+  color: #58627d !important;
+  border: 1px solid #dfe4f3 !important;
+  border-radius: 11px !important;
+  margin-inline: 3px;
+  box-shadow: none !important;
+}
+.employees-timetable-page .timetable-week-filter .week-btn:hover {
+  background: #eef0ff !important;
+  color: #5965c9 !important;
+}
+.employees-timetable-page .timetable-week-filter .week-btn.active,
+.employees-timetable-page .timetable-week-filter .week-btn.active:hover {
+  background: linear-gradient(135deg, #667eea, #764ba2) !important;
+  color: #fff !important;
+  border-color: #6973d9 !important;
+  box-shadow: 0 3px 0 #454c9c, 0 5px 12px rgba(102, 126, 234, .2) !important;
+  font-weight: 800;
+}
+@media (prefers-reduced-motion: reduce) {
+  .employees-timetable-page .timetable-icon-button,
+  .employees-timetable-page .timetable-icon-button::after { transition: none !important; }
+}

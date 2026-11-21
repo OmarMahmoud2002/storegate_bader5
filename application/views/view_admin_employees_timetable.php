@@ -47,6 +47,13 @@ $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetab
         <option value="11">ديسمبر</option>
       </select>
     </div>
+    <div class="timetable-export-actions">
+      <button type="button" class="btn timetable-icon-button" data-export="pdf" data-tooltip="تحميل PDF" aria-label="تحميل PDF" disabled><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></button>
+      <button type="button" class="btn timetable-icon-button" data-export="print" data-tooltip="طباعة A4" aria-label="طباعة A4" disabled><i class="bi bi-printer" aria-hidden="true"></i></button>
+      <?php if ($CI->get_permission_enabled('employees_timetable.save')): ?>
+      <button type="button" class="btn timetable-icon-button timetable-approval-button" id="approveSchedule" data-action="approve" data-tooltip="اعتمد الجدول" aria-label="اعتمد الجدول" disabled><i class="bi bi-check2-circle" aria-hidden="true"></i></button>
+      <?php endif; ?>
+    </div>
     <?php if ($CI->get_permission_enabled('employees_leaves.view')): ?>
     <a class="btn btn-primary timetable-leaves-button" href="<?=base_url().MOD_VALUE.'admin/employees_leaves'?>">
       <i class="bi bi-calendar2-check" aria-hidden="true"></i>
@@ -62,9 +69,12 @@ $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetab
       <button class="btn btn-outline-primary week-btn" data-week="2">الأسبوع الثالث</button>
       <button class="btn btn-outline-primary week-btn" data-week="3">الأسبوع الرابع</button>
       <button class="btn btn-outline-primary week-btn" data-week="4">الأسبوع الخامس</button>
+      <button class="btn btn-outline-primary week-btn" data-week="5" hidden>الأسبوع السادس</button>
       <button class="btn btn-outline-primary week-btn" data-week="all">عرض الكل</button>
     </div>
   </div>
+
+  <div id="timetableMessage" role="status" hidden></div>
 
   <div class="table-responsive timetable-table-shell" aria-label="جدول الدوام الأسبوعي">
     <div id="scheduleTableContainer"></div>
@@ -102,14 +112,18 @@ $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetab
   </div>
 
   <div id="dropdownMenu" class="dropdown-menu shadow-sm" style="display: none;">
-    <button class="dropdown-item bg-am" onclick="selectOption('am')">AM</button>
-    <button class="dropdown-item bg-pm" onclick="selectOption('pm')">PM</button>
-    <button class="dropdown-item bg-leave" onclick="selectOption('leave')">أجازه</button>
-    <button class="dropdown-item bg-note" onclick="selectOption('note')">ملاحظه</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script src="<?=base_url('public/js/employees_timetable.js')?>?v=leaves-2"></script>
+  <script>
+    window.timetableConfig = <?= json_encode(array(
+      'today' => $timetable_today,
+      'latestMonth' => $timetable_latest_month,
+      'canSave' => (bool) $CI->get_permission_enabled('employees_timetable.save'),
+      'supervisors' => (bool) $can_show_supervisors_timetable,
+    ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+  </script>
+  <script src="<?=base_url('public/js/employees_timetable.js')?>?v=roles-approval-4"></script>
   <script src="<?=base_url('public/js/script.js')?>"></script>
 </div>
 </div>

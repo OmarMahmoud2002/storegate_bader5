@@ -1851,113 +1851,98 @@ class Other extends MY_Controller {
 		$this->check_permission('employees_timetable.view');
 
 		$this->data['employees'] = $this->Model_admin->getemployees();
+		$this->load->library('Timetable_period');
+		$this->data['timetable_latest_month'] = $this->timetable_period->latest_month();
+		$this->data['timetable_today'] = $this->timetable_period->today()->format('Y-m-d');
 		$this->load->view('view_admin_employees_timetable', $this->data);
 	}
 
-	function get_employees() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
-		$employees = $this->Model_admin->getemployees();
-		echo json_encode($employees);
-	}
+    private function timetable_access($write = false)
+    {
+        if (!in_array($this->session->userdata('user_id'), $this->get_admins())) {
+            show_error('غير مصرح', 403);
+            exit;
+        }
+        $this->check_permission('employees_timetable.view');
+        if ($write) $this->check_permission('employees_timetable.save');
+        $this->load->library('Timetable_period');
+        $this->load->model('Model_timetable', 'Timetable');
+        return $this->get_permission_enabled('employees_timetable.supervisors.view')
+            ? array('employee', 'supervisor') : array('employee');
+    }
 
-	function get_supervisors() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
+    private function timetable_json($data)
+    {
+        $this->output->set_content_type('application/json')->set_output(json_encode($data, JSON_UNESCAPED_UNICODE));
+    }
 
-		$supervisors = $this->Model_admin->getsupervisors();
-		echo json_encode($supervisors);
-	}
+    function get_employees()
+    {
+        $this->timetable_access();
+        $this->timetable_json($this->Timetable->people());
+    }
 
-	function save_user_schedule() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
+    function get_supervisors()
+    {
+        $groups = $this->timetable_access();
+        $this->timetable_json(in_array('supervisor', $groups) ? $this->Timetable->people(true) : array());
+    }
 
-		if ($this->get_permission_enabled('employees_timetable.save') == false) {
-			echo json_encode(['success' => false, 'message' => 'ليس لديك صلاحية تعديل جدول الموظفين ولن يتم حفظ الجدول']);
-			return;
-		}
+    function get_schedule()
+    {
+        $this->timetable_access();
+        $this->timetable_json((object) $this->Timetable->cells());
+    }
 
-		if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-			$scheduleData = json_decode($this->input->post('scheduleData'), true);
-			if (!is_array($scheduleData)) {
-				echo json_encode(['success' => false, 'message' => 'بيانات الجدول غير صحيحة']);
-				return;
-			}
-			$this->load->model('Model_employee_leaves', 'Leaves');
-			$leaves = $this->Leaves->get_all();
-			$employee_ids = array_map('intval', array_column($this->Model_admin->getemployees(), 'user_id'));
-			$changed_key = (string) $this->input->post('changed_key');
-			$success = true;
+    function get_supervisors_schedule()
+    {
+        $groups = $this->timetable_access();
+        $this->timetable_json((object) (in_array('supervisor', $groups) ? $this->Timetable->cells(true) : array()));
+    }
 
-			foreach ($scheduleData as $key => $info) {
-				if (!preg_match('/^(\d+)_(\d{4}-\d{2}-\d{2})$/', $key, $parts) || !is_array($info) ||
-					!isset($info['type'], $info['status']) || !in_array($info['type'], array('am', 'pm', 'leave', 'note', 'add', 'store', 'event', 'off', ''), true) || !is_string($info['status'])) {
-					echo json_encode(['success' => false, 'message' => 'بيانات الجدول غير صحيحة']);
-					return;
-				}
-				$user_id = $parts[1];
-				$date = $parts[2];
-				$type = $scheduleData[$key]['type'];
+    function timetable_state()
+    {
+        $groups = $this->timetable_access();
+        try {
+            $dates = $this->timetable_period->dates($this->input->get('month'));
+            $this->timetable_json(array('success' => true, 'approvals' => (object) $this->Timetable->approvals($dates, $groups)));
+        } catch (InvalidArgumentException $e) {
+            $this->timetable_json(array('success' => false, 'message' => $e->getMessage()));
+        }
+    }
 
-				$data = [
-					'user_id' => $user_id,
-					'date' => $date,
-					'type' => $type,
-					'description' => $scheduleData[$key]['status']
-				];
+    function save_user_schedule()
+    {
+        $groups = $this->timetable_access(true);
+        if ($this->input->method() !== 'post') { show_404(); return; }
+        try {
+            $payload = json_decode($this->input->post('scheduleData'), true);
+            $this->Timetable->exclusive(function () use ($payload, $groups) {
+                $this->Timetable->save_cells($payload, $groups);
+            });
+            $this->timetable_json(array('success' => true));
+        } catch (Exception $e) {
+            $this->timetable_json(array('success' => false, 'message' => $e->getMessage()));
+        }
+    }
 
-				$signature = in_array((int) $user_id, $employee_ids, true) ? $this->Leaves->signature($leaves, $user_id, $date) : '';
-				if ($signature !== '') {
-					// Only an explicitly edited cell may override a managed holiday.
-					// Older clients posting the entire timetable must not create exceptions.
-					if ($changed_key === $key) {
-						$success = $this->Leaves->save_override($data, $signature) && $success;
-					}
-				} else {
-					$success = $this->Schedule->update_schedule($data) && $success;
-				}
-			}
-			echo json_encode(['success' => $success, 'message' => $success ? '' : 'تعذر حفظ الحالة، حاول مرة أخرى']);
+    function timetable_approval()
+    {
+        $groups = $this->timetable_access(true);
+        if ($this->input->method() !== 'post') { show_404(); return; }
+        try {
+            $dates = $this->timetable_period->dates($this->input->post('month'), $this->input->post('week'));
+            $action = $this->input->post('action');
+            if (!in_array($action, array('approve', 'edit'), true)) throw new InvalidArgumentException('الإجراء غير صحيح.');
+            $this->Timetable->exclusive(function () use ($dates, $groups, $action) {
+                $this->Timetable->set_approval($dates, $groups, $action === 'approve', (int) $this->session->userdata('user_id'));
+            });
+            $this->timetable_json(array('success' => true));
+        } catch (Exception $e) {
+            $this->timetable_json(array('success' => false, 'message' => $e->getMessage()));
+        }
+    }
 
-		}
-	}
-
-	function get_schedule() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
-		
-		
-		$schedules = $this->Schedule->get_schedule();
-		
-		if (empty($schedules)) {
-			echo '{}';
-			return;
-		}
-		
-		echo json_encode($schedules);
-	}
-
-	function get_supervisors_schedule() {
-		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
-		    redirect(base_url());
-		}
-		
-		$user_id = $this->input->get('user_id');
-		$schedules = $this->Schedule->get_schedule(true);
-		
-		if (empty($schedules)) {
-			echo '{}';
-			return;
-		}
-		
-		echo json_encode($schedules);
-	}
-		
 	function employee()
 	{
 		if(!in_array($this->session->userdata('user_id'), $this->get_admins())) {
@@ -2025,6 +2010,13 @@ class Other extends MY_Controller {
 			$user_email       = $this->input->post('user_email', true);
 			$user_password    = $this->input->post('user_password', true);
 		    $user_type    = $this->input->post('user_type', true);
+            $employee_type = $this->input->post('employee_type', true);
+            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor'), true)) {
+                $this->session->set_flashdata('error', 'نوع الموظف غير صحيح');
+                redirect($this->agent->referrer());
+                return;
+            }
+
 			$user_role_id = $this->input->post('user_role_id', true);
 
 			if ($user_type == 'admin') {
@@ -2078,6 +2070,7 @@ class Other extends MY_Controller {
 					'user_create_date'  => secure_data($user_create_date),
 					'user_role_id'     => secure_data($user_role_id)
 	            );
+	            if ($employee_type !== null) $form_data['employee_type'] = $employee_type;
 	            $this->Model_admin->registration($form_data);
 
 
@@ -2117,6 +2110,13 @@ class Other extends MY_Controller {
 			$user_email       = $this->input->post('user_email', true);
 			$user_password    = $this->input->post('user_password', true);
 			$user_role_id = $this->input->post('user_role_id', true);
+            $employee_type = $this->input->post('employee_type', true);
+            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor'), true)) {
+                $this->session->set_flashdata('error', 'نوع الموظف غير صحيح');
+                redirect($this->agent->referrer());
+                return;
+            }
+
 
 			# check if user edited is an admin
 			$user = $this->Model_admin->get_user_by_id($user_id);
@@ -2167,6 +2167,7 @@ class Other extends MY_Controller {
 					'user_password'        => secure_data(md5($user_password)),
 					'user_role_id' => secure_data($user_role_id)
 	            );
+	            if ($employee_type !== null) $form_data['employee_type'] = $employee_type;
 	            $this->Model_admin->edit_employee($user_id,$form_data);
 
 
@@ -2207,6 +2208,13 @@ class Other extends MY_Controller {
 			$valid = 1;
 			$user_id    = $this->input->post('user_id', true);
             $user_fillname = $this->input->post('user_fillname', true);
+            $employee_type = $this->input->post('employee_type', true);
+            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor'), true)) {
+                $this->session->set_flashdata('error', 'نوع الموظف غير صحيح');
+                redirect($this->agent->referrer());
+                return;
+            }
+
 			$user_name        = $this->input->post('user_name', true);
 			$user_email    = $this->input->post('user_email', true);
             $job_number = $this->input->post('job_number', true);
@@ -2236,6 +2244,7 @@ class Other extends MY_Controller {
 	            	$form_data['user_password'] = secure_data(md5($new_user_password));
 	            }
 
+	            if ($employee_type !== null) $form_data['employee_type'] = $employee_type;
 	            $this->Model_admin->edit_employee($user_id,$form_data);
 
 
