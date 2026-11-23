@@ -313,7 +313,7 @@ $can_add_tswya = $CI->get_permission_enabled('employees.settlement.create');
               <div class="inpt">
                 <label for="employeeType">نوع الموظف</label>
                 <select id="employeeType" name="employee_type" class="form-select" required <?= !$can_edit_employee ? 'disabled' : '' ?>>
-                  <?php foreach (array('supervisor' => 'مشرف', 'employee' => 'موظف', 'consultant' => 'استشاري') as $type => $label): ?>
+                  <?php foreach (array('supervisor' => 'مشرف', 'employee' => 'موظف', 'consultant' => 'استشاري', 'manager' => 'مدير') as $type => $label): ?>
                     <option value="<?= $type ?>" <?= ($employee['employee_type'] ?? 'employee') === $type ? 'selected' : '' ?>><?= $label ?></option>
                   <?php endforeach; ?>
                 </select>

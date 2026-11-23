@@ -42,7 +42,7 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
               <span><?php echo $row['user_fillname']; ?></span>
             <?php endif; ?>
           </div>
-          <div class="product-cell status"><span class="cell-label">نوع الموظف:</span><?= array('supervisor' => 'مشرف', 'employee' => 'موظف', 'consultant' => 'استشاري')[$row['employee_type'] ?? 'employee'] ?? 'موظف' ?></div>
+          <div class="product-cell status"><span class="cell-label">نوع الموظف:</span><?= array('supervisor' => 'مشرف', 'employee' => 'موظف', 'consultant' => 'استشاري', 'manager' => 'مدير')[$row['employee_type'] ?? 'employee'] ?? 'موظف' ?></div>
           <div class="product-cell added-date"><span class="cell-label">تاريخ الاظافة:</span><?php echo safe_data($row['user_create_date']); ?></div>
           <div class="product-cell actions">
             <?php if ($can_delete_employee): ?>
@@ -96,6 +96,7 @@ $can_delete_employee = $CI->get_permission_enabled('employees.delete');
                 <option value="supervisor">مشرف</option>
                 <option value="employee" selected>موظف</option>
                 <option value="consultant">استشاري</option>
+                <option value="manager">مدير</option>
               </select>
             </div>
 

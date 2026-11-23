@@ -2011,7 +2011,7 @@ class Other extends MY_Controller {
 			$user_password    = $this->input->post('user_password', true);
 		    $user_type    = $this->input->post('user_type', true);
             $employee_type = $this->input->post('employee_type', true);
-            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor'), true)) {
+            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor', 'manager'), true)) {
                 $this->session->set_flashdata('error', 'نوع الموظف غير صحيح');
                 redirect($this->agent->referrer());
                 return;
@@ -2111,7 +2111,7 @@ class Other extends MY_Controller {
 			$user_password    = $this->input->post('user_password', true);
 			$user_role_id = $this->input->post('user_role_id', true);
             $employee_type = $this->input->post('employee_type', true);
-            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor'), true)) {
+            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor', 'manager'), true)) {
                 $this->session->set_flashdata('error', 'نوع الموظف غير صحيح');
                 redirect($this->agent->referrer());
                 return;
@@ -2209,7 +2209,7 @@ class Other extends MY_Controller {
 			$user_id    = $this->input->post('user_id', true);
             $user_fillname = $this->input->post('user_fillname', true);
             $employee_type = $this->input->post('employee_type', true);
-            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor'), true)) {
+            if ($employee_type !== null && !in_array($employee_type, array('employee', 'consultant', 'supervisor', 'manager'), true)) {
                 $this->session->set_flashdata('error', 'نوع الموظف غير صحيح');
                 redirect($this->agent->referrer());
                 return;
