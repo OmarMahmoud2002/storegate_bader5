@@ -3,7 +3,7 @@
 const config = window.timetableConfig;
 const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const labels = {am: 'AM', pm: 'PM', store_am: 'Store AM', store_pm: 'Store PM', note: 'ملاحظة', leave: 'إجازة'};
+const labels = {am: 'AM', pm: 'PM', store_am: 'Store AM', store_pm: 'Store PM', off: 'OFF', note: 'ملاحظة', leave: 'إجازة'};
 let employees = [], supervisors = [], cells = {}, bossCells = {}, leaves = [], overrides = {}, approvals = {};
 let currentCell = null, busy = true, ready = false;
 let year = Number(localStorage.getItem('selectedYear')) || Number(config.today.slice(0, 4));
@@ -126,7 +126,7 @@ function openCell(cell) {
   const person = (cell.dataset.group === 'supervisor' ? supervisors : employees).find(row => Number(row.user_id) === Number(cell.dataset.user));
   if (!person) return;
   currentCell = cell;
-  const options = person.employee_type === 'consultant' ? ['am', 'pm', 'store_am', 'store_pm', 'note'] : ['am', 'pm', 'note'];
+  const options = person.employee_type === 'consultant' ? ['am', 'pm', 'store_am', 'store_pm', 'off', 'note'] : ['am', 'pm', 'off', 'note'];
   const menu = document.getElementById('dropdownMenu');
   menu.innerHTML = options.map(type => `<button type="button" class="dropdown-item bg-${type}" data-option="${type}">${labels[type]}</button>`).join('');
   menu.style.display = 'block'; const rect = cell.getBoundingClientRect();
@@ -163,7 +163,7 @@ const exportStyles = `
  .export-page th,.export-page td{border:1px solid #b7c2d1;padding:5px 3px;text-align:center;vertical-align:middle;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45;min-width:0;height:auto}
  .export-page thead th,.export-section{background:#e9edf7;font-weight:bold}.export-page .employee-name-col{width:19%}.export-page .employee-role{display:block;font-size:9px}
  .export-page .bg-am{background:#d8eef7!important}.export-page .bg-pm{background:#e4ddf7!important}.export-page .bg-store_am{background:#ffdfc2!important}.export-page .bg-store_pm{background:#f8c8d5!important}
- .export-page .bg-leave{background:#dfefce!important}.export-page .bg-note{background:#fff3cd!important}.export-page .outside-month{background:#f2f2f2;color:#999}
+ .export-page .bg-off{background:#d6d600!important;color:#2b2d42!important}.export-page .bg-leave{background:#dfefce!important}.export-page .bg-note{background:#fff3cd!important}.export-page .outside-month{background:#f2f2f2;color:#999}
  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 `;
 function buildExport() {

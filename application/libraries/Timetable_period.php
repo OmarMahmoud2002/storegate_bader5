@@ -38,7 +38,7 @@ class Timetable_period
     public function allowed_type($role, $type)
     {
         return in_array($type, $role === 'consultant'
-            ? array('am', 'pm', 'store_am', 'store_pm', 'note', '')
-            : array('am', 'pm', 'note', ''), true);
+            ? array('am', 'pm', 'store_am', 'store_pm', 'off', 'note', '')
+            : array('am', 'pm', 'off', 'note', ''), true);
     }
 }

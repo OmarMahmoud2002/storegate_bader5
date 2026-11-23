@@ -72,7 +72,7 @@ class Model_timetable extends CI_Model
             if (!in_array($date, $this->timetable_period->dates(substr($date, 0, 7)), true)) throw new InvalidArgumentException('التاريخ غير صحيح.');
             $group = $people[$parts[1]]['employee_type'] === 'supervisor' ? 'supervisor' : 'employee';
             if ($this->approvals(array($date), array($group))) throw new RuntimeException('الجدول معتمد. اضغط تعديل الجدول أولًا.');
-            $labels = array('am' => 'AM', 'pm' => 'PM', 'store_am' => 'Store AM', 'store_pm' => 'Store PM', '' => '');
+            $labels = array('am' => 'AM', 'pm' => 'PM', 'store_am' => 'Store AM', 'store_pm' => 'Store PM', 'off' => 'OFF', '' => '');
             $validated[] = array('user_id' => (int) $parts[1], 'date' => $date, 'type' => $cell['type'],
                 'description' => $cell['type'] === 'note' ? $cell['status'] : $labels[$cell['type']]);
         }
