@@ -7,7 +7,7 @@ $CI =& get_instance();
 $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetable.supervisors.view');
 ?>
 
-<link href="<?=base_url('public/css/employees_timetable.css')?>?a=<?php $date=date_create();echo date_timestamp_get($date);?>" rel="stylesheet">
+<link href="<?=base_url('public/css/employees_timetable.css')?>?v=<?= filemtime(FCPATH . 'public/css/employees_timetable.css') ?>" rel="stylesheet">
 
 <style>
   body {
@@ -123,7 +123,7 @@ $can_show_supervisors_timetable = $CI->get_permission_enabled('employees_timetab
       'supervisors' => (bool) $can_show_supervisors_timetable,
     ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   </script>
-  <script src="<?=base_url('public/js/employees_timetable.js')?>?v=roles-approval-4"></script>
+  <script src="<?=base_url('public/js/employees_timetable.js')?>?v=<?= filemtime(FCPATH . 'public/js/employees_timetable.js') ?>"></script>
   <script src="<?=base_url('public/js/script.js')?>"></script>
 </div>
 </div>
